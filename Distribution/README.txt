@@ -1,4 +1,4 @@
-VcabTone 1.0.0
+VcabTone 1.0.1
 ==============
 
 声のための EQ とディエッサーです。遅延は 0 です。
@@ -30,8 +30,9 @@ VcabTone 1.0.0
   ダブルクリックで 0 に戻す）。
   緑の帯と紫の帯は、ディエッサーが見ている下の帯域（判定の下端〜境目）と
   上の帯域（境目〜判定の上端）です。境目は実線、両端は点線で引いています。
-  赤の塗りはいま削っている量です。右上の「サ行」の印は、サ行を見つけたときに灯ります。
-  「削った分だけを聞く」で、ディエッサーが削った音だけを聞けます。
+  赤の塗りはいま削っている量です。
+  「削り量」のメーターの左のランプは、サ行を見つけたときに灯ります。
+  「削った音だけを聞く」で、ディエッサーが削った音だけを聞けます。
   詳しい説明は、つまみや項目にマウスを乗せると出ます。
 
 ■ ライセンス
@@ -39,5 +40,5 @@ VcabTone 1.0.0
   AGPLv3（LICENSE.txt）。使っているライブラリのライセンスは
   THIRD_PARTY_LICENSES.md にあります（GPLv3 の本文は GPL-3.0.txt）。
   この版のソースコード:
-    https://github.com/xelloss120/VcabTone/releases/tag/v1.0.0
+    https://github.com/xelloss120/VcabTone/releases/tag/v1.0.1
   VST is a trademark of Steinberg Media Technologies GmbH.

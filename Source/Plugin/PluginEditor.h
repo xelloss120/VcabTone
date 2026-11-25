@@ -52,6 +52,7 @@ private:
     public:
         explicit CutMeter (GraphView& g) : graph (g) {}
         void paint (juce::Graphics&) override;
+        int labelWidth = 70; // 名前の欄の幅（上の「最大の削り量」の名前の欄と同じにする）
     private:
         GraphView& graph;
     };

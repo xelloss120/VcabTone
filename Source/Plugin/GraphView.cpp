@@ -398,20 +398,7 @@ void GraphView::paint (juce::Graphics& g)
     }
 
     g.restoreState();
-
-    // 右上: サ行の検出と削り量（グラフの中）
-    {
-        const bool lit = sibilantLit() && d.on;
-        const auto text = utf8 ("サ行") + utf8 ("　削り量 ") + juce::String (shownCut, 1) + " dB";
-        const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text) + 26.0f;
-        const auto box = juce::Rectangle<float> (a.getRight() - w - 4.0f, a.getY() + 4.0f, w, 20.0f);
-        g.setColour (kGraph.withAlpha (0.8f));
-        g.fillRect (box);
-        g.setColour (lit ? kSibilantColour : kSibilantColour.withAlpha (0.2f));
-        g.fillEllipse (juce::Rectangle<float> (9.0f, 9.0f).withCentre ({ box.getX() + 10.0f, box.getCentreY() }));
-        g.setColour (d.on ? kText : kDim);
-        g.drawText (text, box.withTrimmedLeft (18.0f), juce::Justification::centredLeft);
-    }
+    // サ行の検出と削り量の数字は、ディエッサーの帯のメーターに出す（グラフには出さない。2026-11-26）
 }
 
 void GraphView::setParam (vcab::P id, float v)

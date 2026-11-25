@@ -7,7 +7,7 @@ namespace vcab
 
 namespace
 {
-constexpr double kMixSeconds = 0.010; // バイパスと「削った分だけを聞く」の切り替え（VcabDenoise と同じ 10ms）
+constexpr double kMixSeconds = 0.010; // バイパスと「削った音だけを聞く」の切り替え（VcabDenoise と同じ 10ms）
 }
 
 void Engine::prepare (double sampleRate, int block)

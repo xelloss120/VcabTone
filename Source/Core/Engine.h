@@ -1,4 +1,4 @@
-// 全体の処理（2 章）: EQ → ディエッサー → 「削った分だけを聞く」とバイパスのクロスフェード。
+// 全体の処理（2 章）: EQ → ディエッサー → 「削った音だけを聞く」とバイパスのクロスフェード。
 // 入力チャンネルの選択はプラグインの側（PluginProcessor::mixToMono。VcabDenoise と同じ形）で行い、ここには 1 チャンネルを渡す。
 // JUCE には依存しない。遅延は 0。
 #pragma once
@@ -25,7 +25,7 @@ class Engine
 public:
     void prepare (double fs, int maxBlock);
     void setSettings (const Settings& s);
-    // 削った分だけを聞く（設定には保存しない。6.3）
+    // 削った音だけを聞く（設定には保存しない。6.3）
     void setListenRemoved (bool on) { listenRemoved = on; }
 
     // data: 入力（1 チャンネル）を受け取り、出力に書き換える

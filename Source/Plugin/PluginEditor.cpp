@@ -12,6 +12,8 @@ constexpr int kInputComboWidth = 176; // VcabDenoise・VcabShift の入力チャ
 constexpr int kLabelInset = 5;        // Label の文字の左の余白（JUCE の標準）
 constexpr int kLabelGap = 10;         // 名前と部品の隙間
 constexpr int kTimerHz = 30;
+// チェックボックスの、文字より左の幅（LookAndFeel の drawToggleButton: 左の余白 4 ＋ 箱 ＋ 隙間）
+constexpr int kToggleBox = 4 + static_cast<int> (VCLookAndFeel::kMinFontSize * 1.1f) + 6;
 
 // EQ の 5 列（ローカット、低域、中域、高域、ハイカット）の、行ごとのパラメータ（count は空き）
 const vcab::P kEqGrid[5][3] = {
@@ -109,6 +111,7 @@ VcabToneEditor::VcabToneEditor (VcabToneProcessor& p)
         eqTitles[k].setText (utf8 (vcab::paramInfo (titled[k]).name), juce::dontSendNotification);
         eqTitles[k].setColour (juce::Label::textColourId, kText);
         eqTitles[k].setTooltip (utf8 (vcab::paramInfo (titled[k]).help));
+        eqTitles[k].setJustificationType (juce::Justification::centred);
         addAndMakeVisible (eqTitles[k]);
     }
     for (const auto& column : kEqGrid)
@@ -126,7 +129,7 @@ VcabToneEditor::VcabToneEditor (VcabToneProcessor& p)
     control (vcab::P::deessHigh)->slider->limit = [this] (double v)
     { return std::max (v, static_cast<double> (proc.value (vcab::P::deessSplit) * vcab::kDeessMinRatio)); };
 
-    listenButton.setButtonText (utf8 ("削った分だけを聞く"));
+    listenButton.setButtonText (utf8 ("削った音だけを聞く"));
     listenButton.setTooltip (utf8 ("ディエッサーが削った音だけを出します（何を削っているかを耳で確かめるため）。"
                                    "母音まで聞こえたら、削りすぎです（感度を上げるか、最大の削り量を下げます）。設定には保存しません。"));
     listenButton.setToggleState (proc.listenRemoved.load(), juce::dontSendNotification);
@@ -186,18 +189,17 @@ VcabToneEditor::Control* VcabToneEditor::control (vcab::P id)
 
 void VcabToneEditor::CutMeter::paint (juce::Graphics& g)
 {
+    // 左: サ行の検出のランプと「削り量」。バーは、上の「最大の削り量」のつまみと同じ位置・大きさ
     auto r = getLocalBounds().toFloat();
     const float maxDb = vcab::paramInfo (vcab::P::deessMaxCut).maxValue;
     const float cut = graph.displayCutDb();
     g.setFont (juce::FontOptions (kFont));
-    g.setColour (kText);
-    auto labelBox = r.removeFromLeft (70.0f);
-    g.drawText (utf8 ("削り量"), labelBox.withTrimmedLeft (kLabelInset), juce::Justification::centredLeft);
-    // 右端にサ行の検出の印
-    auto mark = r.removeFromRight (22.0f);
+    auto labelBox = r.removeFromLeft (static_cast<float> (labelWidth));
+    const auto lamp = juce::Rectangle<float> (10.0f, 10.0f).withCentre ({ labelBox.getX() + kLabelInset + 5.0f, labelBox.getCentreY() });
     g.setColour (graph.sibilantLit() ? kSibilantColour : kSibilantColour.withAlpha (0.18f));
-    g.fillEllipse (juce::Rectangle<float> (10.0f, 10.0f).withCentre (mark.getCentre()));
-    r = r.reduced (0.0f, 4.0f);
+    g.fillEllipse (lamp);
+    g.setColour (kText);
+    g.drawText (utf8 ("削り量"), labelBox.withTrimmedLeft (lamp.getRight() + 6.0f - labelBox.getX()), juce::Justification::centredLeft);
     g.setColour (kGraph);
     g.fillRect (r);
     g.setColour (kCutColour);
@@ -261,11 +263,14 @@ void VcabToneEditor::resized()
         {
             auto col = s.removeFromLeft (colW);
             s.removeFromLeft (gap);
+            // 見出しは列の真ん中にそろえる（カットはチェックボックスの箱と文字をまとめて真ん中に）
             auto title = col.removeFromTop (kRow).reduced (0, 3);
-            if (c == 0)
-                control (vcab::P::lowCutOn)->toggle->setBounds (title);
-            else if (c == 4)
-                control (vcab::P::highCutOn)->toggle->setBounds (title);
+            if (c == 0 || c == 4)
+            {
+                auto* t = control (c == 0 ? vcab::P::lowCutOn : vcab::P::highCutOn)->toggle.get();
+                const int w = juce::jmin (title.getWidth(), kToggleBox + textWidth (t->getButtonText()) + 4);
+                t->setBounds (title.withSizeKeepingCentre (w, title.getHeight()));
+            }
             else
                 eqTitles[c - 1].setBounds (title);
             for (int row = 0; row < 3; ++row)
@@ -283,7 +288,7 @@ void VcabToneEditor::resized()
         }
     }
 
-    // ディエッサーの帯（2 行）: オン/オフ・削った分だけを聞く ｜ 境目・判定の下端 ｜ 感度・判定の上端 ｜ 最大の削り量・メーター
+    // ディエッサーの帯（2 行）: オン/オフ・削った音だけを聞く ｜ 境目・判定の下端 ｜ 感度・判定の上端 ｜ 最大の削り量・メーター
     r.removeFromTop (6);
     deessArea = r.removeFromTop (kRow * 2 + 12);
     {
@@ -322,6 +327,7 @@ void VcabToneEditor::resized()
         place (vcab::P::deessHigh, col2.removeFromTop (kRow), l2);
         const int l3 = labelW ({ vcab::P::deessMaxCut });
         place (vcab::P::deessMaxCut, col3.removeFromTop (kRow), l3);
+        meter.labelWidth = l3;
         meter.setBounds (col3.removeFromTop (kRow).reduced (0, 3));
     }
 
@@ -350,7 +356,7 @@ void VcabToneEditor::timerCallback()
     dim (vcab::P::highCutSlope, s.eq.highCutOn);
     for (auto id : { vcab::P::deessSplit, vcab::P::deessSensitivity, vcab::P::deessMaxCut, vcab::P::deessLow, vcab::P::deessHigh })
         dim (id, s.deess.on);
-    // バイパスのとき、削った分だけを聞くは効かない
+    // バイパスのとき、削った音だけを聞くは効かない
     listenButton.setEnabled (! s.bypass && s.deess.on);
     meter.repaint();
 

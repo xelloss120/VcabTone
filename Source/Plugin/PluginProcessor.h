@@ -82,7 +82,7 @@ public:
     double sampleRate() const { return currentSampleRate.load(); }
     SpectrumFifo inputFifo, outputFifo;
     std::atomic<int> usedInputChannel { 0 }; // 自動のときに使っている入力チャンネル（0 = 1ch、1 = 2ch）
-    // 削った分だけを聞く（確かめるための切り替え。設定には保存しない。6.3）
+    // 削った音だけを聞く（確かめるための切り替え。設定には保存しない。6.3）
     std::atomic<bool> listenRemoved { false };
 
     // EXE 版だけ、外枠が入れる。音声の設定画面を開く（VST3 では空のまま）

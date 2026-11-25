@@ -3,7 +3,7 @@
 // --at: 何秒流したところで撮るか（初期値 2 秒）
 // --tooltip x,y: 画面の中の (x, y) にマウスを乗せたときのツールチップも描き込む（出る位置の確かめ用）
 // --scale n: n 倍の解像度で描く（紹介画像用。初期値 1）
-// --listen: 削った分だけを聞く をオンにして撮る
+// --listen: 削った音だけを聞く をオンにして撮る
 #include "PluginProcessor.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
