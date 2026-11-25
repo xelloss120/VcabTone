@@ -1,0 +1,10 @@
+CLAUDE.local.md
+build/
+out/
+.vs/
+*.user
+__pycache__/
+*.lnk
+# 仕様を決めるときの測定（手元の声と、声の名前を含む）
+analysis/
+*.wav
