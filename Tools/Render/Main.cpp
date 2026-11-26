@@ -4,7 +4,7 @@
 // 入力が 2 チャンネル以上のときは、input_channel の 1ch（初期値の「自動」も 1ch）/ 2ch / 平均 で 1 チャンネルにする。
 // --block n: 1 回に処理する標本の数（初期値 256）。
 // --listen: 削った音だけを聞く。
-// --trace: ディエッサーの区切り（約 1ms）ごとの { 時刻, 上の帯域, 下の帯域, 平均, 雑音, 目標の削り量, 声, サ行らしい } を CSV に書く（dB）。
+// --trace: ディエッサーの区切り（約 1ms）ごとの { 時刻, 上の帯域, 下の帯域, 平均, 雑音, 上の帯域（10ms でならした値）, 下の帯域（同）, 目標の削り量, 声, サ行らしい } を CSV に書く（dB）。
 // --response: その設定の EQ の特性（周波数と dB）を CSV に書く（画面の曲線と同じ計算）。
 // --set-at 秒 キー=値: その時刻から設定を変える（複数可。つまみを動かしたときのなめらかさを確かめるため）。
 // 出力は 1 チャンネル、32 ビット浮動小数（測るときに丸めの差が乗らないように）。
@@ -223,9 +223,10 @@ static int run (int argc, char** argv)
     if (! tracePath.empty())
     {
         std::ofstream tl (tracePath);
-        tl << "t,upper,lower,average,noise,target,voiced,sibilant\n";
+        tl << "t,upper,lower,average,noise,upper10,lower10,target,voiced,sibilant\n";
         for (const auto& r : trace)
-            tl << r.time << ',' << r.upperDb << ',' << r.lowerDb << ',' << r.averageDb << ',' << r.noiseDb << ',' << r.targetDb << ','
+            tl << r.time << ',' << r.upperDb << ',' << r.lowerDb << ',' << r.averageDb << ',' << r.noiseDb << ',' << r.upperGateDb << ','
+               << r.lowerGateDb << ',' << r.targetDb << ','
                << static_cast<int> (r.voiced) << ',' << static_cast<int> (r.sibilant) << '\n';
     }
     if (! responsePath.empty())

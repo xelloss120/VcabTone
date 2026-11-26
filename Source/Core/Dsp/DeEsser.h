@@ -1,5 +1,6 @@
 // ディエッサー（4 章）。境目より上の帯域と下の帯域の強さを約 1ms ごとに測り、
-//   1. その瞬間の上下の比でサ行らしいかを決め、
+//   0. 直近 10ms でならした値で、黙っている間の雑音と、声が出ているか（平均を更新するか）を決め、
+//   1. その瞬間（1ms）の上下の比でサ行らしいかを決め、
 //   2. 上の帯域を「声が出ていた間の、下の帯域の平均」と比べた値が感度を超えた分だけ、境目から上を上のシェルフで下げる。
 // 先読みはしない（遅延 0）。
 #pragma once
@@ -21,6 +22,7 @@ public:
     struct Tuning
     {
         double frameSeconds = 0.001;     // 判定の区切り
+        double gateWindowSeconds = 0.01; // 雑音・声が出ているか・平均に使う強さをならす窓（直近の区切りの平均。4.3、4.4）
         double averageSeconds = 0.3;     // 平均の時定数（声が出ている間だけ進む）
         double voiceOverNoiseDb = 12.0;  // 声が出ている条件: 下の帯域が雑音よりこれだけ大きい
         double voiceFloorDb = -80.0;     // 声が出ている条件: 下の帯域の絶対的な下限（dBFS）
@@ -38,6 +40,7 @@ public:
     {
         double time;      // 区切りの終わりの時刻（秒）
         float upperDb, lowerDb, averageDb, noiseDb; // 平均がまだないときの averageDb は NaN
+        float upperGateDb, lowerGateDb; // 窓でならした上の帯域・下の帯域（雑音・声の判定・平均に使う値）
         float targetDb;   // 目標の削り量
         uint8_t voiced, sibilant;
     };
@@ -70,6 +73,9 @@ private:
 
     int frameLength = 48, inFrame = 0;
     double upperSum = 0.0, lowerSum = 0.0;
+    // 直近の区切りの強さ（窓でならすため。prepare で大きさを決める）
+    std::vector<double> upperHistory, lowerHistory;
+    size_t historyPos = 0;
     double noiseDb = 0.0;
     bool noiseValid = false;
     double average = 0.0; // 下の帯域の平均（2 乗の平均）

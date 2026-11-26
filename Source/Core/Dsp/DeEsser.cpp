@@ -22,6 +22,10 @@ void DeEsser::prepare (double sampleRate)
     frameLength = std::max (1, static_cast<int> (std::lround (tuning.frameSeconds * fs)));
     inFrame = 0;
     upperSum = lowerSum = 0.0;
+    const auto historyLength = static_cast<size_t> (std::max (1L, std::lround (tuning.gateWindowSeconds / tuning.frameSeconds)));
+    upperHistory.assign (historyLength, 0.0); // 頭は 0 で埋めた窓（起動直後は小さく出るので、声とはみなさない）
+    lowerHistory.assign (historyLength, 0.0);
+    historyPos = 0;
     noiseValid = false;
     averageValid = false;
     average = 0.0;
@@ -78,27 +82,42 @@ void DeEsser::endFrame()
     const double upperDb = toDb (upper), lowerDb = toDb (lower);
     const double ratioNow = upperDb - lowerDb;
 
+    // 雑音と声の判定に使う値: 直近の区切りの平均（窓でならす）。1ms の値は雑音でも ±10dB ほど揺れ、
+    // 雑音の値が揺れの底に張り付いて、黙っている間の雑音を声と数えてしまうため（4.4）
+    upperHistory[historyPos] = upper;
+    lowerHistory[historyPos] = lower;
+    historyPos = (historyPos + 1) % upperHistory.size();
+    double upperGate = 0.0, lowerGate = 0.0;
+    for (size_t k = 0; k < upperHistory.size(); ++k)
+    {
+        upperGate += upperHistory[k];
+        lowerGate += lowerHistory[k];
+    }
+    upperGate /= static_cast<double> (upperHistory.size());
+    lowerGate /= static_cast<double> (lowerHistory.size());
+    const double upperGateDb = toDb (upperGate), lowerGateDb = toDb (lowerGate);
+
     // 4.4 黙っている間の雑音: 下がるときはすぐ、上がるときはゆっくり
-    if (! noiseValid || lowerDb < noiseDb)
-        noiseDb = lowerDb;
+    if (! noiseValid || lowerGateDb < noiseDb)
+        noiseDb = lowerGateDb;
     else
-        noiseDb = std::min (lowerDb, noiseDb + tuning.noiseRiseDbPerSecond * frameLength / fs);
+        noiseDb = std::min (lowerGateDb, noiseDb + tuning.noiseRiseDbPerSecond * frameLength / fs);
     noiseValid = true;
 
     // 4.3 声が出ていた間の平均（声が出ている区切りだけで更新する）
-    const bool voiced = lowerDb >= noiseDb + tuning.voiceOverNoiseDb && lowerDb >= tuning.voiceFloorDb
-                        && ratioNow <= tuning.vowelRatioDb;
+    const bool voiced = lowerGateDb >= noiseDb + tuning.voiceOverNoiseDb && lowerGateDb >= tuning.voiceFloorDb
+                        && upperGateDb - lowerGateDb <= tuning.vowelRatioDb;
     if (voiced)
     {
         if (! averageValid)
         {
-            average = lower;
+            average = lowerGate;
             averageValid = true;
         }
         else
         {
             const double a = std::exp (-(frameLength / fs) / tuning.averageSeconds);
-            average = a * average + (1.0 - a) * lower;
+            average = a * average + (1.0 - a) * lowerGate;
         }
     }
 
@@ -117,7 +136,8 @@ void DeEsser::endFrame()
 
     if (trace != nullptr)
         trace->push_back ({ static_cast<double> (frames * frameLength) / fs, static_cast<float> (upperDb), static_cast<float> (lowerDb),
-                            static_cast<float> (averageDb), static_cast<float> (noiseDb), static_cast<float> (target),
+                            static_cast<float> (averageDb), static_cast<float> (noiseDb), static_cast<float> (upperGateDb),
+                            static_cast<float> (lowerGateDb), static_cast<float> (target),
                             static_cast<uint8_t> (voiced ? 1 : 0), static_cast<uint8_t> (sibilantLike ? 1 : 0) });
 }
 
