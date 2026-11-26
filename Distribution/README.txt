@@ -1,4 +1,4 @@
-VcabTone 1.1.0
+VcabTone 1.1.1
 ==============
 
 声のための EQ とディエッサーです。遅延は 0 です。
@@ -40,5 +40,5 @@ VcabTone 1.1.0
   AGPLv3（LICENSE.txt）。使っているライブラリのライセンスは
   THIRD_PARTY_LICENSES.md にあります（GPLv3 の本文は GPL-3.0.txt）。
   この版のソースコード:
-    https://github.com/xelloss120/VcabTone/releases/tag/v1.1.0
+    https://github.com/xelloss120/VcabTone/releases/tag/v1.1.1
   VST is a trademark of Steinberg Media Technologies GmbH.

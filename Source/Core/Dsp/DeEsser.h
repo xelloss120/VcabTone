@@ -29,6 +29,7 @@ public:
         double vowelRatioDb = -6.0;      // 母音らしさの線: 上 − 下 がこれ以下
         double sibilantRatioDb = -3.0;   // サ行らしさの線: 上 − 下 がこれより上
         double noiseRiseDbPerSecond = 3.0; // 雑音の追いかけ: 上がるときの速さ（下がるときはすぐ）
+        double silenceDb = -120.0;       // 無音とみなす下の帯域の強さ（1ms の値。デジタルの 0 やミュート。窓の中にあれば雑音の値を保つ）
         double slope = 0.5;              // 削り量の傾き（感度を超えた分の何倍を削るか）
         double attackSeconds = 0.00033;  // 削り量の立ち上がりの時定数（約 1ms で 95%）
         double releaseSeconds = 0.02;    // 削り量の戻りの時定数（約 60ms で 95%）
@@ -75,7 +76,8 @@ private:
     double upperSum = 0.0, lowerSum = 0.0;
     // 直近の区切りの強さ（窓でならすため。prepare で大きさを決める）
     std::vector<double> upperHistory, lowerHistory;
-    size_t historyPos = 0;
+    size_t historyPos = 0, historyFilled = 0;
+    size_t framesSinceSilent = 0; // 1ms の値が無音とみなす所より下だった区切りから、いくつ経ったか
     double noiseDb = 0.0;
     bool noiseValid = false;
     double average = 0.0; // 下の帯域の平均（2 乗の平均）

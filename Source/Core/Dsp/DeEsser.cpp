@@ -23,9 +23,10 @@ void DeEsser::prepare (double sampleRate)
     inFrame = 0;
     upperSum = lowerSum = 0.0;
     const auto historyLength = static_cast<size_t> (std::max (1L, std::lround (tuning.gateWindowSeconds / tuning.frameSeconds)));
-    upperHistory.assign (historyLength, 0.0); // 頭は 0 で埋めた窓（起動直後は小さく出るので、声とはみなさない）
+    upperHistory.assign (historyLength, 0.0);
     lowerHistory.assign (historyLength, 0.0);
-    historyPos = 0;
+    historyPos = historyFilled = 0;
+    framesSinceSilent = historyLength;
     noiseValid = false;
     averageValid = false;
     average = 0.0;
@@ -87,25 +88,34 @@ void DeEsser::endFrame()
     upperHistory[historyPos] = upper;
     lowerHistory[historyPos] = lower;
     historyPos = (historyPos + 1) % upperHistory.size();
+    historyFilled = std::min (historyFilled + 1, upperHistory.size());
     double upperGate = 0.0, lowerGate = 0.0;
     for (size_t k = 0; k < upperHistory.size(); ++k)
     {
         upperGate += upperHistory[k];
         lowerGate += lowerHistory[k];
     }
-    upperGate /= static_cast<double> (upperHistory.size());
-    lowerGate /= static_cast<double> (lowerHistory.size());
+    // 起動直後は、埋まった区切りだけで平均する（0 で埋めた分で小さく出て、雑音を低く見ないように）
+    upperGate /= static_cast<double> (historyFilled);
+    lowerGate /= static_cast<double> (historyFilled);
     const double upperGateDb = toDb (upperGate), lowerGateDb = toDb (lowerGate);
 
-    // 4.4 黙っている間の雑音: 下がるときはすぐ、上がるときはゆっくり
-    if (! noiseValid || lowerGateDb < noiseDb)
-        noiseDb = lowerGateDb;
-    else
-        noiseDb = std::min (lowerGateDb, noiseDb + tuning.noiseRiseDbPerSecond * frameLength / fs);
-    noiseValid = true;
+    // 4.4 黙っている間の雑音: 下がるときはすぐ、上がるときはゆっくり。
+    // 次のときは、雑音の値を変えない。デジタルの無音（0）やミュートで雑音の値が底まで落ちると、戻るまで数十秒かかるため。
+    //   - ならした値が、声の下限より雑音との差だけ小さい所（-92dBFS）より下（そこより下の雑音は、声の判定に関わらない）
+    //   - 窓の中に、無音とみなす区切り（1ms の値が -120dBFS より下）がある（無音との境目で、ならした値が下がるため）
+    framesSinceSilent = toDb (lower) < tuning.silenceDb ? 0 : framesSinceSilent + 1;
+    if (lowerGateDb >= tuning.voiceFloorDb - tuning.voiceOverNoiseDb && framesSinceSilent >= upperHistory.size())
+    {
+        if (! noiseValid || lowerGateDb < noiseDb)
+            noiseDb = lowerGateDb;
+        else
+            noiseDb = std::min (lowerGateDb, noiseDb + tuning.noiseRiseDbPerSecond * frameLength / fs);
+        noiseValid = true;
+    }
 
     // 4.3 声が出ていた間の平均（声が出ている区切りだけで更新する）
-    const bool voiced = lowerGateDb >= noiseDb + tuning.voiceOverNoiseDb && lowerGateDb >= tuning.voiceFloorDb
+    const bool voiced = noiseValid && lowerGateDb >= noiseDb + tuning.voiceOverNoiseDb && lowerGateDb >= tuning.voiceFloorDb
                         && upperGateDb - lowerGateDb <= tuning.vowelRatioDb;
     if (voiced)
     {
