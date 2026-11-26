@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(VcabTone VERSION 1.1.1 LANGUAGES C CXX)
+project(VcabTone VERSION 1.1.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -53,7 +53,7 @@ target_link_libraries(vcabtn_render PRIVATE
 
 # ---- プラグイン（VST3）と単体アプリ（EXE） ----
 juce_add_plugin(VcabTone
-    COMPANY_NAME "VcabTone"
+    COMPANY_NAME "Vcab"
     PRODUCT_NAME "VcabTone"
     PLUGIN_MANUFACTURER_CODE Vcha
     PLUGIN_CODE Vctn
