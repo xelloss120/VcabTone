@@ -84,6 +84,8 @@ private:
     bool averageValid = false;
     double targetDb = 0.0, cutDb = 0.0;
     double attackCoef = 0.0, releaseCoef = 0.0;
+    double averageCoef = 0.0; // 平均の、1 区切りごとの掛け算の値（exp(-区切りの長さ / 時定数)）
+    double freqCoef = 0.0;    // 削るシェルフの位置を追う、作り直し 1 回ごとの寄せる割合
     bool sibilant = false;
     double blockPeakCut = 0.0;
     bool blockSibilantSeen = false;
@@ -92,6 +94,7 @@ private:
     // 削るシェルフ（境目から上）。削り量か位置が変わったら作り直す
     Biquad shelf;
     double shelfFreq = 5000.0, shelfTargetFreq = 5000.0, shelfDesignedDb = 0.0, shelfDesignedFreq = -1.0;
+    double shelfWarped = 0.0, shelfWarpedFreq = -1.0; // 周波数 shelfWarpedFreq の写し（位置が同じ間は、tan を求め直さない）
     int untilShelfUpdate = 0;
 
     std::vector<TraceRow>* trace = nullptr;

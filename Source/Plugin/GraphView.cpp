@@ -17,6 +17,17 @@ constexpr double kSibilantHoldMs = 150.0;  // サ行の印を灯しておく時�
 const char* const kPointNames[] = { "ローカット", "低域", "中域", "高域", "ハイカット" };
 } // namespace
 
+namespace
+{
+bool sameEq (const vcab::EqSettings& a, const vcab::EqSettings& b)
+{
+    return a.lowCutOn == b.lowCutOn && a.lowCutFreq == b.lowCutFreq && a.lowCutSlope == b.lowCutSlope && a.lowGain == b.lowGain
+           && a.lowFreq == b.lowFreq && a.lowSlope == b.lowSlope && a.midGain == b.midGain && a.midFreq == b.midFreq
+           && a.midWidth == b.midWidth && a.highGain == b.highGain && a.highFreq == b.highFreq && a.highSlope == b.highSlope
+           && a.highCutOn == b.highCutOn && a.highCutFreq == b.highCutFreq && a.highCutSlope == b.highCutSlope;
+}
+} // namespace
+
 GraphView::GraphView (VcabToneProcessor& p) : proc (p)
 {
     window.resize (kFftSize);
@@ -40,6 +51,10 @@ GraphView::GraphView (VcabToneProcessor& p) : proc (p)
 GraphView::~GraphView()
 {
     stopTimer();
+    // ドラッグの途中で画面が閉じられたときも、開いた操作を閉じておく
+    for (int i = 0; i < vcab::kNumParams; ++i)
+        if (gestureDepth[static_cast<size_t> (i)] > 0)
+            proc.param (static_cast<vcab::P> (i))->endChangeGesture();
 }
 
 bool GraphView::sibilantLit() const
@@ -87,6 +102,20 @@ void GraphView::computeSpectrum (const std::vector<float>& ring, int ringPos, st
         p = kSmooth * p + (1.0f - kSmooth) * (re * re + im * im);
         db[static_cast<size_t> (b)] = juce::jlimit (kMinDb - 20.0f, kMaxDb + 20.0f, 10.0f * std::log10 (p + 1.0e-14f));
     }
+}
+
+void GraphView::updatePixelHz (const juce::Rectangle<float>& a, double fs)
+{
+    if (a.getWidth() == pixelHzWidth && a.getX() == pixelHzX && fs == pixelHzFs)
+        return;
+    pixelHzWidth = a.getWidth();
+    pixelHzX = a.getX();
+    pixelHzFs = fs;
+    // 右端の 1 画素先まで（スペクトルは画素の幅の両端を使う）
+    const int count = static_cast<int> (std::floor (a.getWidth())) + 2;
+    pixelHz.resize (static_cast<size_t> (count));
+    for (int k = 0; k < count; ++k)
+        pixelHz[static_cast<size_t> (k)] = hzForX (a.getX() + static_cast<float> (k));
 }
 
 juce::Rectangle<float> GraphView::plotArea() const
@@ -187,6 +216,8 @@ void GraphView::paint (juce::Graphics& g)
     const auto a = plotArea();
     g.setFont (juce::FontOptions (kFont - 3.0f));
     const double fs = proc.sampleRate() > 0.0 ? proc.sampleRate() : 48000.0;
+    updatePixelHz (a, fs);
+    const int pixels = static_cast<int> (pixelHz.size()) - 1; // 描く画素の数（a.getX() から 1 画素ずつ）
 
     // 目盛り: 周波数
     for (float f : { 20.0f, 50.0f, 100.0f, 200.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f, 20000.0f })
@@ -275,10 +306,11 @@ void GraphView::paint (juce::Graphics& g)
     {
         juce::Path path;
         bool started = false;
-        for (float x = a.getX(); x <= a.getRight(); x += 1.0f)
+        for (int k = 0; k < pixels; ++k)
         {
+            const float x = a.getX() + static_cast<float> (k);
             // 画素の幅の中の一番大きい区画（低い側は補間）
-            const float f0 = hzForX (x), f1 = hzForX (x + 1.0f);
+            const float f0 = pixelHz[static_cast<size_t> (k)], f1 = pixelHz[static_cast<size_t> (k + 1)];
             const float b0 = static_cast<float> (f0 * kFftSize / fs), b1 = static_cast<float> (f1 * kFftSize / fs);
             float v;
             if (b1 - b0 < 1.0f)
@@ -317,9 +349,10 @@ void GraphView::paint (juce::Graphics& g)
         const float y0 = yForEq (0.0f);
         fill.startNewSubPath (a.getX(), y0);
         bool started = false;
-        for (float x = a.getX(); x <= a.getRight(); x += 2.0f)
+        for (int k = 0; k < pixels; k += 2)
         {
-            const float db = static_cast<float> (20.0 * std::log10 (std::abs (shelf.response (hzForX (x), fs))));
+            const float x = a.getX() + static_cast<float> (k);
+            const float db = static_cast<float> (20.0 * std::log10 (std::abs (shelf.response (pixelHz[static_cast<size_t> (k)], fs))));
             const float y = yForEq (juce::jmax (-kEqRange, db));
             fill.lineTo (x, y);
             if (! started)
@@ -340,19 +373,27 @@ void GraphView::paint (juce::Graphics& g)
 
     // EQ の特性
     {
-        const auto chain = vcab::Eq::design (settings.eq, fs);
-        juce::Path line;
-        for (float x = a.getX(); x <= a.getRight(); x += 1.0f)
+        if (! eqCurveValid || ! sameEq (settings.eq, eqCurveSettings) || a != eqCurveArea || fs != eqCurveFs)
         {
-            const float db = static_cast<float> (vcab::Eq::responseDb (chain, hzForX (x), fs));
-            const float y = yForEq (juce::jlimit (-kEqRange - 2.0f, kEqRange + 2.0f, db));
-            if (x == a.getX())
-                line.startNewSubPath (x, y);
-            else
-                line.lineTo (x, y);
+            const auto chain = vcab::Eq::design (settings.eq, fs);
+            eqCurve.clear();
+            for (int k = 0; k < pixels; ++k)
+            {
+                const float x = a.getX() + static_cast<float> (k);
+                const float db = static_cast<float> (vcab::Eq::responseDb (chain, pixelHz[static_cast<size_t> (k)], fs));
+                const float y = yForEq (juce::jlimit (-kEqRange - 2.0f, kEqRange + 2.0f, db));
+                if (k == 0)
+                    eqCurve.startNewSubPath (x, y);
+                else
+                    eqCurve.lineTo (x, y);
+            }
+            eqCurveSettings = settings.eq;
+            eqCurveArea = a;
+            eqCurveFs = fs;
+            eqCurveValid = true;
         }
         g.setColour (kEqColour.withAlpha (settings.bypass ? 0.35f : 1.0f));
-        g.strokePath (line, juce::PathStrokeType (2.0f));
+        g.strokePath (eqCurve, juce::PathStrokeType (2.0f));
     }
 
     // EQ の点
@@ -411,9 +452,15 @@ void GraphView::gesture (vcab::P id, bool start)
 {
     if (id == vcab::P::count)
         return;
+    // ドラッグ中にダブルクリックやホイールが来ても、ホストには 1 つの操作として伝える
+    // （JUCE は、開いている操作をもう一度開くと止まる。jassert）
+    auto& depth = gestureDepth[static_cast<size_t> (id)];
     if (start)
-        proc.param (id)->beginChangeGesture();
-    else
+    {
+        if (depth++ == 0)
+            proc.param (id)->beginChangeGesture();
+    }
+    else if (depth > 0 && --depth == 0)
         proc.param (id)->endChangeGesture();
 }
 

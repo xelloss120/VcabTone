@@ -1,4 +1,4 @@
-VcabTone 1.1.2
+VcabTone 1.2.0
 ==============
 
 声のための EQ とディエッサーです。遅延は 0 です。
@@ -18,8 +18,8 @@ VcabTone 1.1.2
 ■ 注意
   ・ヘッドフォンで使ってください。スピーカーだとハウリング（大きな音）が
     起きることがあります。EXE 版は起動してすぐ音が出ます。
-  ・ローカットの初期値（100Hz）は、ボイスチェンジャーで声を高くした後を
-    想定しています。男性の地声に使うときは 80Hz 以下に下げてください。
+  ・ローカットの初期値は 80Hz です。ボイスチェンジャーで声を高くした後なら、
+    100〜120Hz に上げると、低い雑音（ハムなど）をより深く削れます。
   ・署名をしていないため、初回に「PC が保護されました」と出たら
     「詳細情報」→「実行」を押してください。
   ・EXE 版の設定は %APPDATA%\VcabTone に保存されます。
@@ -40,5 +40,5 @@ VcabTone 1.1.2
   AGPLv3（LICENSE.txt）。使っているライブラリのライセンスは
   THIRD_PARTY_LICENSES.md にあります（GPLv3 の本文は GPL-3.0.txt）。
   この版のソースコード:
-    https://github.com/xelloss120/VcabTone/releases/tag/v1.1.2
+    https://github.com/xelloss120/VcabTone/releases/tag/v1.2.0
   VST is a trademark of Steinberg Media Technologies GmbH.

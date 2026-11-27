@@ -24,12 +24,26 @@ struct BiquadCoeffs
 class Biquad
 {
 public:
-    void setCoeffs (const BiquadCoeffs& coeffs) { c = coeffs; }
+    void setCoeffs (const BiquadCoeffs& coeffs)
+    {
+        c = coeffs;
+        identity = c.isIdentity();
+    }
     const BiquadCoeffs& coeffs() const { return c; }
     void reset() { x1 = x2 = y1 = y2 = 0.0; }
 
     double process (double x)
     {
+        // 素通しの係数なら、掛け算を飛ばして状態だけ進める（素通しの式の値は入力そのもの。
+        // 状態を進めておくので、後で係数が素通しでなくなっても、そのままつながる）
+        if (identity)
+        {
+            x2 = x1;
+            x1 = x;
+            y2 = y1;
+            y1 = x;
+            return x;
+        }
         const double y = c.b0 * x + c.b1 * x1 + c.b2 * x2 - c.a1 * y1 - c.a2 * y2;
         x2 = x1;
         x1 = x;
@@ -40,6 +54,7 @@ public:
 
 private:
     BiquadCoeffs c;
+    bool identity = true;
     double x1 = 0.0, x2 = 0.0, y1 = 0.0, y2 = 0.0;
 };
 
@@ -62,6 +77,9 @@ BiquadCoeffs lowShelf1 (double f, double gainDb, double fs);
 BiquadCoeffs highShelf1 (double f, double gainDb, double fs);
 BiquadCoeffs lowShelf2 (double f, double gainDb, double q, double fs);
 BiquadCoeffs highShelf2 (double f, double gainDb, double q, double fs);
+// 周波数の写し（warp の値）を先に求めておく形。同じ周波数で増減だけを何度も作り直すとき（ディエッサーの削るシェルフ）に使う
+double warpedFreq (double f, double fs);
+BiquadCoeffs highShelf2Warped (double K, double gainDb, double q);
 // ピーク。幅はオクターブ（増減が半分（dB で）になる所の間）
 BiquadCoeffs peak (double f, double gainDb, double octaves, double fs);
 

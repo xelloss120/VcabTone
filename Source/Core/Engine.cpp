@@ -1,6 +1,7 @@
 #include "Engine.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace vcab
 {
@@ -22,7 +23,7 @@ void Engine::prepare (double sampleRate, int block)
     deesser.setSettings (settings.deess);
     mixStep = static_cast<float> (1.0 / (kMixSeconds * fs));
     bypassMix = settings.bypass ? 1.0f : 0.0f;
-    listenMix = listenRemoved ? 1.0f : 0.0f;
+    listenMix = listenRemoved && settings.deess.on ? 1.0f : 0.0f;
 }
 
 void Engine::setSettings (const Settings& s)
@@ -45,26 +46,46 @@ void Engine::process (float* data, int n)
 
 void Engine::processChunk (float* data, int n)
 {
-    std::copy (data, data + n, dry.begin());
+    // 数でない値（NaN、無限大）が入ると、IIR の状態に残って、それ以降の音がずっと出なくなる。入口で 0 にする
+    for (int i = 0; i < n; ++i)
+        if (! std::isfinite (data[i]))
+            data[i] = 0.0f;
+
+    // 「削った音だけを聞く」は、ディエッサーがオフなら効かせない（削った音は 0 なので、無音になってしまう。画面でもボタンを薄くしている）
+    const float bypassTarget = settings.bypass ? 1.0f : 0.0f;
+    const float listenTarget = listenRemoved && settings.deess.on ? 1.0f : 0.0f;
+    // バイパスと「削った音だけを聞く」が、どちらも切ってあって切り替えの途中でもなければ、元の音を取っておく必要はない
+    const bool needDry = bypassMix != 0.0f || bypassTarget != 0.0f;
+    const bool needEqOut = listenMix != 0.0f || listenTarget != 0.0f;
+
+    if (needDry)
+        std::copy (data, data + n, dry.begin());
 
     // EQ → ディエッサー（判定は EQ の後の音。4.6）。バイパスの間も止めない（戻したとき、すぐに効くように）
     eq.process (data, n);
-    std::copy (data, data + n, eqOut.begin());
+    if (needEqOut)
+        std::copy (data, data + n, eqOut.begin());
     deesser.process (data, n);
 
-    const float bypassTarget = settings.bypass ? 1.0f : 0.0f;
-    const float listenTarget = listenRemoved ? 1.0f : 0.0f;
-    for (int i = 0; i < n; ++i)
+    if (needDry || needEqOut)
     {
-        const auto si = static_cast<size_t> (i);
-        listenMix += std::clamp (listenTarget - listenMix, -mixStep, mixStep);
-        bypassMix += std::clamp (bypassTarget - bypassMix, -mixStep, mixStep);
-        // 削った分 = ディエッサーの前 − 後（削っていなければ 0）
-        const float processed = data[i];
-        const float removed = eqOut[si] - processed;
-        float out = processed + (removed - processed) * listenMix;
-        out += (dry[si] - out) * bypassMix;
-        data[i] = out;
+        for (int i = 0; i < n; ++i)
+        {
+            const auto si = static_cast<size_t> (i);
+            listenMix += std::clamp (listenTarget - listenMix, -mixStep, mixStep);
+            bypassMix += std::clamp (bypassTarget - bypassMix, -mixStep, mixStep);
+            // 削った分 = ディエッサーの前 − 後（削っていなければ 0）
+            const float processed = data[i];
+            float out = processed;
+            if (needEqOut)
+            {
+                const float removed = eqOut[si] - processed;
+                out += (removed - processed) * listenMix;
+            }
+            if (needDry)
+                out += (dry[si] - out) * bypassMix;
+            data[i] = out;
+        }
     }
     // 画面用（このブロックの中の最大と、サ行らしい区切りがあったか）
     const float cutPeak = deesser.blockPeakCutDb();

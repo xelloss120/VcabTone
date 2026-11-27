@@ -13,6 +13,47 @@ namespace
 // 周波数のつまみは、範囲の両端の相乗平均を真ん中に置く（対数の目盛りに近い動き）
 float geoCentre (float lo, float hi) { return std::sqrt (lo * hi); }
 
+// 範囲に収めた後の値から作る（表を作る途中の確かめでも使うので、表を見ない）
+Settings settingsFromValuesInRange (const std::array<float, kNumParams>& v)
+{
+    auto get = [&v] (P id) { return v[static_cast<size_t> (id)]; };
+    auto on = [&] (P id) { return get (id) >= 0.5f; };
+    auto slope = [&] (P id) { return static_cast<Slope> (std::clamp (static_cast<int> (std::lround (get (id))), 0, 2)); };
+
+    Settings s;
+    s.bypass = on (P::bypass);
+    auto& e = s.eq;
+    e.lowCutOn = on (P::lowCutOn);
+    e.lowCutFreq = get (P::lowCutFreq);
+    e.lowCutSlope = slope (P::lowCutSlope);
+    e.lowGain = get (P::lowGain);
+    e.lowFreq = get (P::lowFreq);
+    e.lowSlope = slope (P::lowSlope);
+    e.midGain = get (P::midGain);
+    e.midFreq = get (P::midFreq);
+    e.midWidth = get (P::midWidth);
+    e.highGain = get (P::highGain);
+    e.highFreq = get (P::highFreq);
+    e.highSlope = slope (P::highSlope);
+    e.highCutOn = on (P::highCutOn);
+    e.highCutFreq = get (P::highCutFreq);
+    e.highCutSlope = slope (P::highCutSlope);
+
+    auto& d = s.deess;
+    d.on = on (P::deessOn);
+    d.split = get (P::deessSplit);
+    d.sensitivity = get (P::deessSensitivity);
+    d.maxCut = get (P::deessMaxCut);
+    d.low = get (P::deessLow);
+    d.high = get (P::deessHigh);
+    // 判定の下端 < 境目 < 判定の上端 を守る（画面ではつまみを止めるが、オートメーションや保存した値でも崩れないように。
+    // つまみの値は書き換えない）。範囲から、ぶつかりうるのは境目と上端だけ（下端は最大 1kHz、境目は最小 3kHz）
+    d.high = std::max (d.high, d.split * kDeessMinRatio);
+
+    s.inputChannel = static_cast<InputChannel> (std::clamp (static_cast<int> (std::lround (get (P::inputChannel))), 0, 3));
+    return s;
+}
+
 std::vector<ParamInfo> makeTable()
 {
     using T = ParamType;
@@ -23,10 +64,10 @@ std::vector<ParamInfo> makeTable()
         // EQ
         { P::lowCutOn, "low_cut_on", "ローカット", T::toggle, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, "", {},
           "低い雑音（ハム、ファン、床の振動、吹かれ）を削ります。" },
-        { P::lowCutFreq, "low_cut_freq", "ローカットの周波数", T::real, 20.0f, 300.0f, 100.0f, 1.0f, geoCentre (20.0f, 300.0f), "Hz", {},
+        { P::lowCutFreq, "low_cut_freq", "ローカットの周波数", T::real, 20.0f, 300.0f, 80.0f, 1.0f, geoCentre (20.0f, 300.0f), "Hz", {},
           "これより下を削ります（ここで -3dB）。\n"
           "24dB/oct なら、声の高さ（基音）がこの 1.3 倍以上あれば、削れるのは 0.5dB 以下です。"
-          "ボイチェンを通さない男性の地声に使うときは、80Hz 以下に下げます。" },
+          "ボイチェンで声を高くした後なら、100〜120Hz に上げると、低い雑音（ハムなど）をより深く削れます。" },
         { P::lowCutSlope, "low_cut_slope", "ローカットの傾き", T::choice, 0.0f, 2.0f, 2.0f, 1.0f, 0.0f, "",
           { "6dB/oct", "12dB/oct", "24dB/oct" },
           "周波数より下を、どれだけ急に削るか。大きいほど、周波数より上を残したまま、下だけを深く削ります。" },
@@ -94,7 +135,7 @@ std::vector<ParamInfo> makeTable()
     for (const auto& p : t)
         v[static_cast<size_t> (p.id)] = p.defaultValue;
     const Settings a {};
-    const Settings b = Settings::fromValues (v);
+    const Settings b = settingsFromValuesInRange (v);
     const auto& ea = a.eq;
     const auto& eb = b.eq;
     assert (a.bypass == b.bypass && a.inputChannel == b.inputChannel
@@ -146,42 +187,15 @@ std::array<float, kNumParams> defaultValues()
 
 Settings Settings::fromValues (const std::array<float, kNumParams>& v)
 {
-    auto get = [&v] (P id) { return v[static_cast<size_t> (id)]; };
-    auto on = [&] (P id) { return get (id) >= 0.5f; };
-    auto slope = [&] (P id) { return static_cast<Slope> (std::clamp (static_cast<int> (std::lround (get (id))), 0, 2)); };
-
-    Settings s;
-    s.bypass = on (P::bypass);
-    auto& e = s.eq;
-    e.lowCutOn = on (P::lowCutOn);
-    e.lowCutFreq = get (P::lowCutFreq);
-    e.lowCutSlope = slope (P::lowCutSlope);
-    e.lowGain = get (P::lowGain);
-    e.lowFreq = get (P::lowFreq);
-    e.lowSlope = slope (P::lowSlope);
-    e.midGain = get (P::midGain);
-    e.midFreq = get (P::midFreq);
-    e.midWidth = get (P::midWidth);
-    e.highGain = get (P::highGain);
-    e.highFreq = get (P::highFreq);
-    e.highSlope = slope (P::highSlope);
-    e.highCutOn = on (P::highCutOn);
-    e.highCutFreq = get (P::highCutFreq);
-    e.highCutSlope = slope (P::highCutSlope);
-
-    auto& d = s.deess;
-    d.on = on (P::deessOn);
-    d.split = get (P::deessSplit);
-    d.sensitivity = get (P::deessSensitivity);
-    d.maxCut = get (P::deessMaxCut);
-    d.low = get (P::deessLow);
-    d.high = get (P::deessHigh);
-    // 判定の下端 < 境目 < 判定の上端 を守る（画面ではつまみを止めるが、オートメーションや保存した値でも崩れないように。
-    // つまみの値は書き換えない）。範囲から、ぶつかりうるのは境目と上端だけ（下端は最大 1kHz、境目は最小 3kHz）
-    d.high = std::max (d.high, d.split * kDeessMinRatio);
-
-    s.inputChannel = static_cast<InputChannel> (std::clamp (static_cast<int> (std::lround (get (P::inputChannel))), 0, 3));
-    return s;
+    // 値は表の範囲に収める（数でなければ初期値）。プラグインと処理ツールは範囲の中の値しか渡さないが、
+    // ほかの入り口から使っても、幅 0 以下などの値で計算が壊れないように
+    std::array<float, kNumParams> w {};
+    for (const auto& p : paramTable())
+    {
+        const float x = v[static_cast<size_t> (p.id)];
+        w[static_cast<size_t> (p.id)] = std::isnan (x) ? p.defaultValue : std::clamp (x, p.minValue, p.maxValue);
+    }
+    return settingsFromValuesInRange (w);
 }
 
 } // namespace vcab

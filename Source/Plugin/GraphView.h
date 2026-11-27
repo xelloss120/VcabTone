@@ -49,6 +49,23 @@ private:
     // 点: 0 ローカット、1 低域、2 中域、3 高域、4 ハイカット
     int dragPoint = -1, hoverPoint = -1;
 
+    // 画素ごとの周波数（plotArea の左端から 1 画素ずつ。幅か標本化周波数が変わったら作り直す）。
+    // スペクトルと曲線を描くたびに、画素ごとに pow を計算し直さないため
+    std::vector<float> pixelHz;
+    float pixelHzWidth = -1.0f, pixelHzX = 0.0f;
+    double pixelHzFs = -1.0;
+    void updatePixelHz (const juce::Rectangle<float>& a, double fs);
+
+    // EQ の特性の曲線（設定と大きさが変わったときだけ計算し直す）
+    juce::Path eqCurve;
+    vcab::EqSettings eqCurveSettings;
+    bool eqCurveValid = false;
+    juce::Rectangle<float> eqCurveArea;
+    double eqCurveFs = -1.0;
+
+    // 開いている操作（ホストに伝える beginChangeGesture の数。ドラッグ中のダブルクリックやホイールで、二重に開かないように）
+    std::array<int, vcab::kNumParams> gestureDepth {};
+
     void timerCallback() override;
     void computeSpectrum (const std::vector<float>& ring, int ringPos, std::vector<float>& power, std::vector<float>& db);
 

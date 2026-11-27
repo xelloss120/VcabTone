@@ -5,7 +5,7 @@
 // --block n: 1 回に処理する標本の数（初期値 256）。
 // --listen: 削った音だけを聞く。
 // --trace: ディエッサーの区切り（約 1ms）ごとの { 時刻, 上の帯域, 下の帯域, 平均, 雑音, 上の帯域（10ms でならした値）, 下の帯域（同）, 目標の削り量, 声, サ行らしい } を CSV に書く（dB）。
-// --response: その設定の EQ の特性（周波数と dB）を CSV に書く（画面の曲線と同じ計算）。
+// --response: その設定の EQ の特性（周波数と dB）を CSV に書く（画面の曲線と同じ計算）。--set-at で変える前の、最初の設定の特性。
 // --set-at 秒 キー=値: その時刻から設定を変える（複数可。つまみを動かしたときのなめらかさを確かめるため）。
 // 出力は 1 チャンネル、32 ビット浮動小数（測るときに丸めの差が乗らないように）。
 #include "Engine.h"
@@ -233,6 +233,8 @@ static int run (int argc, char** argv)
     {
         std::ofstream rl (responsePath);
         rl << "f,db\n";
+        if (! changes.empty())
+            std::printf ("response: the settings before --set-at\n");
         const auto chain = vcab::Eq::design (settings.eq, fs);
         for (int k = 0; k <= 400; ++k)
         {

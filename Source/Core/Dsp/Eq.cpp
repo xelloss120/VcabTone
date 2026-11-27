@@ -65,12 +65,22 @@ void shelf (Eq::Chain& c, int first, double gainDb, Slope slope, double f, doubl
 Eq::Chain Eq::design (const EqSettings& s, double fs)
 {
     Chain c;
-    cut (c, lowCut0, s.lowCutOn, s.lowCutSlope, s.lowCutFreq, fs, false);
-    shelf (c, lowShelf0, s.lowGain, s.lowSlope, s.lowFreq, fs, false);
-    c[midPeak] = s.midGain == 0.0f ? BiquadCoeffs::identity() : design::peak (s.midFreq, s.midGain, s.midWidth, fs);
-    shelf (c, highShelf0, s.highGain, s.highSlope, s.highFreq, fs, true);
-    cut (c, highCut0, s.highCutOn, s.highCutSlope, s.highCutFreq, fs, true);
+    designBands (c, allBands, s, fs);
     return c;
+}
+
+void Eq::designBands (Chain& c, unsigned bands, const EqSettings& s, double fs)
+{
+    if (bands & lowCutBand)
+        cut (c, lowCut0, s.lowCutOn, s.lowCutSlope, s.lowCutFreq, fs, false);
+    if (bands & lowShelfBand)
+        shelf (c, lowShelf0, s.lowGain, s.lowSlope, s.lowFreq, fs, false);
+    if (bands & midBand)
+        c[midPeak] = s.midGain == 0.0f ? BiquadCoeffs::identity() : design::peak (s.midFreq, s.midGain, s.midWidth, fs);
+    if (bands & highShelfBand)
+        shelf (c, highShelf0, s.highGain, s.highSlope, s.highFreq, fs, true);
+    if (bands & highCutBand)
+        cut (c, highCut0, s.highCutOn, s.highCutSlope, s.highCutFreq, fs, true);
 }
 
 double Eq::responseDb (const Chain& chain, double f, double fs)
@@ -141,8 +151,16 @@ double Eq::Path::process (double x)
 
 void Eq::Path::setCoeffs (const Chain& c)
 {
+    coeffs = c;
     for (size_t k = 0; k < sections.size(); ++k)
         sections[k].setCoeffs (c[k]);
+}
+
+void Eq::Path::redesign (unsigned bands, const EqSettings& s, double fs)
+{
+    designBands (coeffs, bands, s, fs);
+    for (size_t k = 0; k < sections.size(); ++k)
+        sections[k].setCoeffs (coeffs[k]);
 }
 
 void Eq::prepare (double sampleRate)
@@ -159,31 +177,36 @@ void Eq::prepare (double sampleRate)
     fresh = true;
 }
 
-void Eq::redesign()
+void Eq::redesign (unsigned bands)
 {
+    if (bands == 0)
+        return;
+    EqSettings s;
+    current.applyTo (s);
     for (int k = 0; k < 2; ++k)
     {
         // フェードが終わっている間は、使っている方だけ作る
         if (k != active && fade >= 1.0)
             continue;
         auto& p = paths[static_cast<size_t> (k)];
-        EqSettings s;
-        current.applyTo (s);
         p.discrete.applyTo (s);
-        p.setCoeffs (design (s, fs));
+        p.redesign (bands, s, fs);
     }
 }
 
-bool Eq::stepContinuous()
+unsigned Eq::stepContinuous()
 {
-    bool moved = false;
+    // Continuous::v の並びの、それぞれの値が属する帯域
+    static constexpr unsigned kBandOf[9] = { lowCutBand, lowShelfBand, lowShelfBand, midBand, midBand, midBand,
+                                             highShelfBand, highShelfBand, highCutBand };
+    unsigned moved = 0;
     for (size_t i = 0; i < current.v.size(); ++i)
     {
         const double d = target.v[i] - current.v[i];
         if (d == 0.0)
             continue;
         current.v[i] = std::abs (d) < kSnap ? target.v[i] : current.v[i] + d * smoothCoef;
-        moved = true;
+        moved |= kBandOf[i];
     }
     return moved;
 }
@@ -198,18 +221,18 @@ void Eq::setTarget (const EqSettings& s)
         current = target;
         paths[static_cast<size_t> (active)].discrete = targetDiscrete;
         fade = 1.0;
-        redesign();
+        redesign (allBands);
     }
 }
 
 void Eq::process (float* data, int n)
 {
-    for (int i = 0; i < n; ++i)
+    for (int i = 0; i < n;)
     {
         if (--untilUpdate < 0)
         {
             untilUpdate = kUpdateInterval - 1;
-            bool changed = stepContinuous();
+            unsigned changed = stepContinuous();
             // 段の数が変わる切り替えは、前の切り替えのフェードが終わってから始める（続けて動かされても、2 つの間だけでつなぐ）
             if (fade >= 1.0 && targetDiscrete != paths[static_cast<size_t> (active)].discrete)
             {
@@ -218,21 +241,37 @@ void Eq::process (float* data, int n)
                 paths[static_cast<size_t> (next)].discrete = targetDiscrete;
                 active = next;
                 fade = 0.0;
-                changed = true;
+                changed = allBands;
             }
-            if (changed)
-                redesign();
+            redesign (changed);
         }
 
-        const double x = data[i];
-        double y = paths[static_cast<size_t> (active)].process (x);
+        // 次に係数を見直すまでの標本をまとめて処理する（untilUpdate は、この区間の残りの標本の数）
+        const int len = std::min (n - i, untilUpdate + 1);
+        untilUpdate -= len - 1;
+        auto& cur = paths[static_cast<size_t> (active)];
         if (fade < 1.0)
         {
-            const double old = paths[static_cast<size_t> (1 - active)].process (x);
-            fade = std::min (1.0, fade + fadeStep);
-            y = old + (y - old) * fade;
+            auto& old = paths[static_cast<size_t> (1 - active)];
+            for (int k = i; k < i + len; ++k)
+            {
+                const double x = data[k];
+                double y = cur.process (x);
+                if (fade < 1.0) // 区間の途中でフェードが終わったら、そこからは新しい方だけ
+                {
+                    const double o = old.process (x);
+                    fade = std::min (1.0, fade + fadeStep);
+                    y = o + (y - o) * fade;
+                }
+                data[k] = static_cast<float> (y);
+            }
         }
-        data[i] = static_cast<float> (y);
+        else
+        {
+            for (int k = i; k < i + len; ++k)
+                data[k] = static_cast<float> (cur.process (data[k]));
+        }
+        i += len;
     }
 }
 

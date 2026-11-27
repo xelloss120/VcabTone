@@ -35,6 +35,8 @@ void DeEsser::prepare (double sampleRate)
     frames = 0;
     attackCoef = 1.0 - std::exp (-1.0 / (tuning.attackSeconds * fs));
     releaseCoef = 1.0 - std::exp (-1.0 / (tuning.releaseSeconds * fs));
+    averageCoef = std::exp (-(frameLength / fs) / tuning.averageSeconds);
+    freqCoef = 1.0 - std::exp (-kShelfUpdateInterval / (kFreqSmoothSeconds * fs));
     for (auto& f : upperFilters)
         f.reset();
     for (auto& f : lowerFilters)
@@ -42,7 +44,7 @@ void DeEsser::prepare (double sampleRate)
     shelf.reset();
     shelf.setCoeffs (BiquadCoeffs::identity());
     designedSplit = designedLow = designedHigh = -1.0f;
-    shelfDesignedFreq = -1.0;
+    shelfDesignedFreq = shelfWarpedFreq = -1.0;
     shelfDesignedDb = 0.0;
     shelfFreq = shelfTargetFreq = settings.split;
     untilShelfUpdate = 0;
@@ -126,8 +128,7 @@ void DeEsser::endFrame()
         }
         else
         {
-            const double a = std::exp (-(frameLength / fs) / tuning.averageSeconds);
-            average = a * average + (1.0 - a) * lowerGate;
+            average = averageCoef * average + (1.0 - averageCoef) * lowerGate;
         }
     }
 
@@ -141,8 +142,9 @@ void DeEsser::endFrame()
         target = std::min (static_cast<double> (settings.maxCut), over * tuning.slope);
     }
     targetDb = target;
-    // 画面の「検出」の印: サ行らしく、上の帯域が黙っている間の雑音より十分大きい（無音の雑音で灯らないように）
-    sibilant = sibilantLike && upperDb >= noiseDb + tuning.voiceOverNoiseDb;
+    // 画面の「検出」の印: サ行らしく、上の帯域が黙っている間の雑音より十分大きい（無音の雑音で灯らないように）。
+    // ディエッサーがオフなら灯さない（ほかのつまみと同じく、働いていない表示にそろえる。2026-11-27）
+    sibilant = settings.on && sibilantLike && upperDb >= noiseDb + tuning.voiceOverNoiseDb;
 
     if (trace != nullptr)
         trace->push_back ({ static_cast<double> (frames * frameLength) / fs, static_cast<float> (upperDb), static_cast<float> (lowerDb),
@@ -153,7 +155,6 @@ void DeEsser::endFrame()
 
 void DeEsser::process (float* data, int n)
 {
-    const double freqCoef = 1.0 - std::exp (-kShelfUpdateInterval / (kFreqSmoothSeconds * fs));
     blockPeakCut = 0.0;
     blockSibilantSeen = false;
     for (int i = 0; i < n; ++i)
@@ -191,7 +192,18 @@ void DeEsser::process (float* data, int n)
             if (std::abs (cutDb - shelfDesignedDb) >= kShelfSnapDb || (cutDb == 0.0 && shelfDesignedDb != 0.0)
                 || (cutDb > 0.0 && shelfFreq != shelfDesignedFreq))
             {
-                shelf.setCoeffs (cutDb == 0.0 ? BiquadCoeffs::identity() : design::highShelf2 (shelfFreq, -cutDb, tuning.shelfQ, fs));
+                if (cutDb == 0.0)
+                    shelf.setCoeffs (BiquadCoeffs::identity());
+                else
+                {
+                    // 位置が前と同じなら、周波数の写し（tan）は前の値を使う（削っている間は、増減だけが 8 標本ごとに変わるため）
+                    if (shelfFreq != shelfWarpedFreq)
+                    {
+                        shelfWarped = design::warpedFreq (shelfFreq, fs);
+                        shelfWarpedFreq = shelfFreq;
+                    }
+                    shelf.setCoeffs (design::highShelf2Warped (shelfWarped, -cutDb, tuning.shelfQ));
+                }
                 shelfDesignedDb = cutDb;
                 shelfDesignedFreq = shelfFreq;
             }

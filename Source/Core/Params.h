@@ -71,7 +71,7 @@ constexpr float kDeessMinRatio = 1.25f;
 struct EqSettings
 {
     bool lowCutOn = true;
-    float lowCutFreq = 100.0f;
+    float lowCutFreq = 80.0f;
     Slope lowCutSlope = Slope::db24;
     float lowGain = 0.0f, lowFreq = 300.0f;
     Slope lowSlope = Slope::db24;

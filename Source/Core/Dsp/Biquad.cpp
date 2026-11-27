@@ -86,8 +86,15 @@ BiquadCoeffs lowShelf2 (double f, double gainDb, double q, double fs)
 
 BiquadCoeffs highShelf2 (double f, double gainDb, double q, double fs)
 {
+    return highShelf2Warped (warp (f, fs), gainDb, q);
+}
+
+double warpedFreq (double f, double fs) { return warp (f, fs); }
+
+BiquadCoeffs highShelf2Warped (double K, double gainDb, double q)
+{
     const double A = std::pow (10.0, gainDb / 40.0), sA = std::sqrt (A);
-    return bilinear2 (A * A, A * sA / q, A, 1.0, sA / q, A, warp (f, fs));
+    return bilinear2 (A * A, A * sA / q, A, 1.0, sA / q, A, K);
 }
 
 // ピーク（RBJ）。幅は双一次変換で縮む分を補う（RBJ の BW の式と同じ）
