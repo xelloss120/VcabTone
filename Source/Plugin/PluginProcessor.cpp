@@ -221,7 +221,20 @@ void VcabToneProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
         if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        {
+            auto tree = juce::ValueTree::fromXml (*xml);
+            // 前の版で保存した設定にないパラメータ（後から足した、低域・中域・高域の形など）は、初期値で補う。
+            // JUCE は、ないパラメータを今の値のまま残すので、補わないと保存したときと違う音になる
+            for (const auto& p : vcab::paramTable())
+                if (! tree.getChildWithProperty ("id", p.key).isValid())
+                {
+                    juce::ValueTree child ("PARAM");
+                    child.setProperty ("id", p.key, nullptr);
+                    child.setProperty ("value", p.defaultValue, nullptr);
+                    tree.appendChild (child, nullptr);
+                }
+            apvts.replaceState (tree);
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

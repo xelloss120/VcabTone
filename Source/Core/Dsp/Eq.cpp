@@ -13,7 +13,7 @@ constexpr double kSmoothSeconds = 0.02;      // 連続の値を追う時定数
 constexpr double kFadeSeconds = 0.02;        // 段の数が変わるときのクロスフェード
 constexpr double kSnap = 1.0e-4;             // ここまで近づいたら、狙いの値にそろえる
 
-enum Index { lowCut0, lowCut1, lowShelf0, lowShelf1, midPeak, highShelf0, highShelf1, highCut0, highCut1 };
+enum Index { lowCut0, lowCut1, low0, low1, mid0, mid1, high0, high1, highCut0, highCut1 };
 
 void cut (Eq::Chain& c, int first, bool on, Slope slope, double f, double fs, bool high)
 {
@@ -60,6 +60,17 @@ void shelf (Eq::Chain& c, int first, double gainDb, Slope slope, double f, doubl
             break;
     }
 }
+// 低域・中域・高域の 1 本（2 段）。ベルは 1 段目だけ使う
+void band (Eq::Chain& c, int first, Shape shape, double gainDb, double f, Slope slope, double octaves, double fs)
+{
+    if (shape == Shape::bell)
+    {
+        c[static_cast<size_t> (first)] = gainDb == 0.0 ? BiquadCoeffs::identity() : design::peak (f, gainDb, octaves, fs);
+        c[static_cast<size_t> (first + 1)] = BiquadCoeffs::identity();
+    }
+    else
+        shelf (c, first, gainDb, slope, f, fs, shape == Shape::highShelf);
+}
 } // namespace
 
 Eq::Chain Eq::design (const EqSettings& s, double fs)
@@ -73,12 +84,12 @@ void Eq::designBands (Chain& c, unsigned bands, const EqSettings& s, double fs)
 {
     if (bands & lowCutBand)
         cut (c, lowCut0, s.lowCutOn, s.lowCutSlope, s.lowCutFreq, fs, false);
-    if (bands & lowShelfBand)
-        shelf (c, lowShelf0, s.lowGain, s.lowSlope, s.lowFreq, fs, false);
+    if (bands & lowBand)
+        band (c, low0, s.lowShape, s.lowGain, s.lowFreq, s.lowSlope, s.lowWidth, fs);
     if (bands & midBand)
-        c[midPeak] = s.midGain == 0.0f ? BiquadCoeffs::identity() : design::peak (s.midFreq, s.midGain, s.midWidth, fs);
-    if (bands & highShelfBand)
-        shelf (c, highShelf0, s.highGain, s.highSlope, s.highFreq, fs, true);
+        band (c, mid0, s.midShape, s.midGain, s.midFreq, s.midSlope, s.midWidth, fs);
+    if (bands & highBand)
+        band (c, high0, s.highShape, s.highGain, s.highFreq, s.highSlope, s.highWidth, fs);
     if (bands & highCutBand)
         cut (c, highCut0, s.highCutOn, s.highCutSlope, s.highCutFreq, fs, true);
 }
@@ -95,9 +106,11 @@ double Eq::responseDb (const Chain& chain, double f, double fs)
 Eq::Continuous Eq::Continuous::from (const EqSettings& s)
 {
     Continuous c;
-    c.v = { std::log (static_cast<double> (s.lowCutFreq)), static_cast<double> (s.lowGain), std::log (static_cast<double> (s.lowFreq)),
+    c.v = { std::log (static_cast<double> (s.lowCutFreq)),
+            static_cast<double> (s.lowGain), std::log (static_cast<double> (s.lowFreq)), std::log (static_cast<double> (s.lowWidth)),
             static_cast<double> (s.midGain), std::log (static_cast<double> (s.midFreq)), std::log (static_cast<double> (s.midWidth)),
-            static_cast<double> (s.highGain), std::log (static_cast<double> (s.highFreq)), std::log (static_cast<double> (s.highCutFreq)) };
+            static_cast<double> (s.highGain), std::log (static_cast<double> (s.highFreq)), std::log (static_cast<double> (s.highWidth)),
+            std::log (static_cast<double> (s.highCutFreq)) };
     return c;
 }
 
@@ -106,12 +119,14 @@ void Eq::Continuous::applyTo (EqSettings& s) const
     s.lowCutFreq = static_cast<float> (std::exp (v[0]));
     s.lowGain = static_cast<float> (v[1]);
     s.lowFreq = static_cast<float> (std::exp (v[2]));
-    s.midGain = static_cast<float> (v[3]);
-    s.midFreq = static_cast<float> (std::exp (v[4]));
-    s.midWidth = static_cast<float> (std::exp (v[5]));
-    s.highGain = static_cast<float> (v[6]);
-    s.highFreq = static_cast<float> (std::exp (v[7]));
-    s.highCutFreq = static_cast<float> (std::exp (v[8]));
+    s.lowWidth = static_cast<float> (std::exp (v[3]));
+    s.midGain = static_cast<float> (v[4]);
+    s.midFreq = static_cast<float> (std::exp (v[5]));
+    s.midWidth = static_cast<float> (std::exp (v[6]));
+    s.highGain = static_cast<float> (v[7]);
+    s.highFreq = static_cast<float> (std::exp (v[8]));
+    s.highWidth = static_cast<float> (std::exp (v[9]));
+    s.highCutFreq = static_cast<float> (std::exp (v[10]));
 }
 
 Eq::Discrete Eq::Discrete::from (const EqSettings& s)
@@ -119,8 +134,12 @@ Eq::Discrete Eq::Discrete::from (const EqSettings& s)
     Discrete d;
     d.lowCutOn = s.lowCutOn;
     d.highCutOn = s.highCutOn;
+    d.lowShape = s.lowShape;
+    d.midShape = s.midShape;
+    d.highShape = s.highShape;
     d.lowCutSlope = s.lowCutSlope;
     d.lowSlope = s.lowSlope;
+    d.midSlope = s.midSlope;
     d.highSlope = s.highSlope;
     d.highCutSlope = s.highCutSlope;
     return d;
@@ -130,15 +149,20 @@ void Eq::Discrete::applyTo (EqSettings& s) const
 {
     s.lowCutOn = lowCutOn;
     s.highCutOn = highCutOn;
+    s.lowShape = lowShape;
+    s.midShape = midShape;
+    s.highShape = highShape;
     s.lowCutSlope = lowCutSlope;
     s.lowSlope = lowSlope;
+    s.midSlope = midSlope;
     s.highSlope = highSlope;
     s.highCutSlope = highCutSlope;
 }
 
 bool Eq::Discrete::operator== (const Discrete& o) const
 {
-    return lowCutOn == o.lowCutOn && highCutOn == o.highCutOn && lowCutSlope == o.lowCutSlope && lowSlope == o.lowSlope
+    return lowCutOn == o.lowCutOn && highCutOn == o.highCutOn && lowShape == o.lowShape && midShape == o.midShape
+           && highShape == o.highShape && lowCutSlope == o.lowCutSlope && lowSlope == o.lowSlope && midSlope == o.midSlope
            && highSlope == o.highSlope && highCutSlope == o.highCutSlope;
 }
 
@@ -197,8 +221,8 @@ void Eq::redesign (unsigned bands)
 unsigned Eq::stepContinuous()
 {
     // Continuous::v の並びの、それぞれの値が属する帯域
-    static constexpr unsigned kBandOf[9] = { lowCutBand, lowShelfBand, lowShelfBand, midBand, midBand, midBand,
-                                             highShelfBand, highShelfBand, highCutBand };
+    static constexpr unsigned kBandOf[11] = { lowCutBand, lowBand, lowBand, lowBand, midBand, midBand, midBand,
+                                              highBand, highBand, highBand, highCutBand };
     unsigned moved = 0;
     for (size_t i = 0; i < current.v.size(); ++i)
     {

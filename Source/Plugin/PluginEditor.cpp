@@ -15,19 +15,23 @@ constexpr int kTimerHz = 30;
 // チェックボックスの、文字より左の幅（LookAndFeel の drawToggleButton: 左の余白 4 ＋ 箱 ＋ 隙間）
 constexpr int kToggleBox = 4 + static_cast<int> (VCLookAndFeel::kMinFontSize * 1.1f) + 6;
 
-// EQ の 5 列（ローカット、低域、中域、高域、ハイカット）の、行ごとのパラメータ（count は空き）
-const vcab::P kEqGrid[5][3] = {
-    { vcab::P::count, vcab::P::lowCutFreq, vcab::P::lowCutSlope },
-    { vcab::P::lowGain, vcab::P::lowFreq, vcab::P::lowSlope },
-    { vcab::P::midGain, vcab::P::midFreq, vcab::P::midWidth },
-    { vcab::P::highGain, vcab::P::highFreq, vcab::P::highSlope },
-    { vcab::P::count, vcab::P::highCutFreq, vcab::P::highCutSlope },
+// EQ の 5 列（ローカット、低域、中域、高域、ハイカット）の、行ごとのパラメータ（count は空き）。
+// 低域・中域・高域の最後の行は、シェルフなら傾き、ベルなら幅（同じ所に置き、形で出す方を替える）
+constexpr int kEqRows = 4;
+const vcab::P kEqGrid[5][kEqRows] = {
+    { vcab::P::count, vcab::P::count, vcab::P::lowCutFreq, vcab::P::lowCutSlope },
+    { vcab::P::lowShape, vcab::P::lowGain, vcab::P::lowFreq, vcab::P::lowSlope },
+    { vcab::P::midShape, vcab::P::midGain, vcab::P::midFreq, vcab::P::midSlope },
+    { vcab::P::highShape, vcab::P::highGain, vcab::P::highFreq, vcab::P::highSlope },
+    { vcab::P::count, vcab::P::count, vcab::P::highCutFreq, vcab::P::highCutSlope },
 };
-const char* const kEqRowNames[3] = { "増減", "周波数", "傾き・幅" };
-const char* const kEqRowHelp[3] = {
+const vcab::P kEqWidth[5] = { vcab::P::count, vcab::P::lowWidth, vcab::P::midWidth, vcab::P::highWidth, vcab::P::count };
+const char* const kEqRowNames[kEqRows] = { "形", "増減", "周波数", "傾き・幅" };
+const char* const kEqRowHelp[kEqRows] = {
+    "低域・中域・高域の形（ベル、ローシェルフ、ハイシェルフ）。",
     "低域・中域・高域を上げ下げする量（±6dB）。",
     "それぞれの帯域の位置。グラフの点を左右にドラッグしても動かせます。",
-    "ローカット・低域・高域・ハイカットは傾き（6 / 12 / 24dB/oct）、中域は幅（オクターブ）。",
+    "カットとシェルフは傾き（6 / 12 / 24dB/oct）、ベルは幅（オクターブ）。",
 };
 } // namespace
 
@@ -96,7 +100,7 @@ VcabToneEditor::VcabToneEditor (VcabToneProcessor& p)
     }
 
     // EQ の帯
-    for (int r = 0; r < 3; ++r)
+    for (int r = 0; r < kEqRows; ++r)
     {
         eqRowLabels[r].setText (utf8 (kEqRowNames[r]), juce::dontSendNotification);
         eqRowLabels[r].setColour (juce::Label::textColourId, kDim);
@@ -118,6 +122,9 @@ VcabToneEditor::VcabToneEditor (VcabToneProcessor& p)
         for (auto id : column)
             if (id != vcab::P::count)
                 add (id, false);
+    for (auto id : kEqWidth)
+        if (id != vcab::P::count)
+            add (id, false);
 
     // ディエッサーの帯
     add (vcab::P::deessOn, false);
@@ -244,8 +251,8 @@ void VcabToneEditor::resized()
         input->label.setBounds (h.removeFromRight (textWidth (input->label.getText()) + kLabelInset + kLabelGap));
     }
 
-    // EQ の帯: 見出しの行 ＋ 3 行（増減、周波数、傾き・幅）× 5 列
-    eqArea = r.removeFromTop (kRow * 4 + 12);
+    // EQ の帯: 見出しの行 ＋ 4 行（形、増減、周波数、傾き・幅）× 5 列
+    eqArea = r.removeFromTop (kRow * (kEqRows + 1) + 12);
     {
         auto s = eqArea.reduced (8, 6);
         int rowLabelW = 0;
@@ -273,9 +280,11 @@ void VcabToneEditor::resized()
             }
             else
                 eqTitles[c - 1].setBounds (title);
-            for (int row = 0; row < 3; ++row)
+            for (int row = 0; row < kEqRows; ++row)
             {
                 auto cell = col.removeFromTop (kRow).reduced (0, 3);
+                if (row == kEqRows - 1 && kEqWidth[c] != vcab::P::count)
+                    control (kEqWidth[c])->slider->setBounds (cell);
                 const auto id = kEqGrid[c][row];
                 if (id == vcab::P::count)
                     continue;
@@ -354,6 +363,14 @@ void VcabToneEditor::timerCallback()
     dim (vcab::P::lowCutSlope, s.eq.lowCutOn);
     dim (vcab::P::highCutFreq, s.eq.highCutOn);
     dim (vcab::P::highCutSlope, s.eq.highCutOn);
+    // 低域・中域・高域の最後の行: シェルフなら傾き、ベルなら幅
+    const std::pair<vcab::Shape, int> shapes[] = { { s.eq.lowShape, 1 }, { s.eq.midShape, 2 }, { s.eq.highShape, 3 } };
+    for (auto [shape, c] : shapes)
+    {
+        const bool bell = shape == vcab::Shape::bell;
+        control (kEqGrid[c][kEqRows - 1])->combo->setVisible (! bell);
+        control (kEqWidth[c])->slider->setVisible (bell);
+    }
     for (auto id : { vcab::P::deessSplit, vcab::P::deessSensitivity, vcab::P::deessMaxCut, vcab::P::deessLow, vcab::P::deessHigh })
         dim (id, s.deess.on);
     // バイパスのとき、削った音だけを聞くは効かない

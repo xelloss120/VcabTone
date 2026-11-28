@@ -21,10 +21,11 @@ namespace
 {
 bool sameEq (const vcab::EqSettings& a, const vcab::EqSettings& b)
 {
-    return a.lowCutOn == b.lowCutOn && a.lowCutFreq == b.lowCutFreq && a.lowCutSlope == b.lowCutSlope && a.lowGain == b.lowGain
-           && a.lowFreq == b.lowFreq && a.lowSlope == b.lowSlope && a.midGain == b.midGain && a.midFreq == b.midFreq
-           && a.midWidth == b.midWidth && a.highGain == b.highGain && a.highFreq == b.highFreq && a.highSlope == b.highSlope
-           && a.highCutOn == b.highCutOn && a.highCutFreq == b.highCutFreq && a.highCutSlope == b.highCutSlope;
+    return a.lowCutOn == b.lowCutOn && a.lowCutFreq == b.lowCutFreq && a.lowCutSlope == b.lowCutSlope
+           && a.lowShape == b.lowShape && a.lowGain == b.lowGain && a.lowFreq == b.lowFreq && a.lowSlope == b.lowSlope && a.lowWidth == b.lowWidth
+           && a.midShape == b.midShape && a.midGain == b.midGain && a.midFreq == b.midFreq && a.midSlope == b.midSlope && a.midWidth == b.midWidth
+           && a.highShape == b.highShape && a.highGain == b.highGain && a.highFreq == b.highFreq && a.highSlope == b.highSlope
+           && a.highWidth == b.highWidth && a.highCutOn == b.highCutOn && a.highCutFreq == b.highCutFreq && a.highCutSlope == b.highCutSlope;
 }
 } // namespace
 
@@ -43,7 +44,7 @@ GraphView::GraphView (VcabToneProcessor& p) : proc (p)
     work.assign (2 * kFftSize, 0.0f);
     settings = proc.currentSettings();
     setTooltip (utf8 ("青は入力、橙は出力のスペクトル。黄の線は EQ の特性（右の目盛り）。\n"
-                      "点をドラッグすると、EQ の周波数と増減を動かせます（ホイールで、中域は幅、低域・高域は増減。ダブルクリックで 0 に戻す）。\n"
+                      "点をドラッグすると、EQ の周波数と増減を動かせます（ホイールで、ベルは幅、シェルフは増減。ダブルクリックで 0 に戻す）。\n"
                       "緑の帯と紫の帯は、ディエッサーが見ている下の帯域（判定の下端〜境目）と上の帯域（境目〜判定の上端）、赤の塗りはいま削っている量です。"));
     startTimerHz (kTimerHz);
 }
@@ -171,6 +172,28 @@ vcab::P GraphView::gainParam (int i)
     return ids[i];
 }
 
+vcab::P GraphView::shapeParam (int i)
+{
+    const vcab::P ids[] = { vcab::P::count, vcab::P::lowShape, vcab::P::midShape, vcab::P::highShape, vcab::P::count };
+    return ids[i];
+}
+
+vcab::P GraphView::widthParam (int i)
+{
+    const vcab::P ids[] = { vcab::P::count, vcab::P::lowWidth, vcab::P::midWidth, vcab::P::highWidth, vcab::P::count };
+    return ids[i];
+}
+
+bool GraphView::isBell (int i) const
+{
+    return shapeParam (i) != vcab::P::count && std::lround (proc.value (shapeParam (i))) == static_cast<long> (vcab::Shape::bell);
+}
+
+bool GraphView::isShelf (int i) const
+{
+    return shapeParam (i) != vcab::P::count && ! isBell (i);
+}
+
 bool GraphView::pointOn (int i) const
 {
     if (i == 0)
@@ -182,7 +205,7 @@ bool GraphView::pointOn (int i) const
 
 juce::Point<float> GraphView::pointPos (int i) const
 {
-    // 点は曲線の上に置く: 中域は（周波数、増減）、シェルフは増減が半分になる所（周波数、増減 ÷ 2）、
+    // 点は曲線の上に置く: ベルは（周波数、増減）、シェルフは増減が半分になる所（周波数、増減 ÷ 2）、
     // カットは -3dB の所（オフなら 0dB の線）
     const auto a = plotArea();
     const float hz = proc.value (freqParam (i));
@@ -424,8 +447,8 @@ void GraphView::paint (juce::Graphics& g)
                 const float gdb = proc.value (gainParam (i));
                 text << "  " << (gdb > 0.0f ? "+" : "") << juce::String (gdb, 1) << " dB";
             }
-            if (i == 2)
-                text << "  " << juce::String (proc.value (vcab::P::midWidth), 2) << " oct";
+            if (isBell (i))
+                text << "  " << juce::String (proc.value (widthParam (i)), 2) << " oct";
             const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text) + 12.0f;
             auto tb = juce::Rectangle<float> (w, 20.0f).withCentre ({ p.x, p.y - 20.0f });
             if (tb.getY() < a.getY())
@@ -542,10 +565,11 @@ void GraphView::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWhee
     if (i < 0 || gainParam (i) == vcab::P::count)
         return;
     const bool up = w.deltaY > 0.0f;
-    const auto id = i == 2 ? vcab::P::midWidth : gainParam (i);
+    const bool bell = isBell (i);
+    const auto id = bell ? widthParam (i) : gainParam (i);
     const auto& info = vcab::paramInfo (id);
     // 幅は 1/12 オクターブずつ掛け算で、増減は 0.5dB ずつ
-    const float v = i == 2 ? proc.value (id) * std::exp2 ((up ? 1.0f : -1.0f) / 12.0f) : proc.value (id) + (up ? 0.5f : -0.5f);
+    const float v = bell ? proc.value (id) * std::exp2 ((up ? 1.0f : -1.0f) / 12.0f) : proc.value (id) + (up ? 0.5f : -0.5f);
     gesture (id, true);
     setParam (id, juce::jlimit (info.minValue, info.maxValue, v));
     gesture (id, false);

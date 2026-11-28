@@ -2,7 +2,7 @@
 // 縦軸は左がスペクトルの大きさ（dB）、右が EQ の増減（dB）。
 // EQ の 5 本の点は曲線の上に置き、ドラッグで動かす（ローカット・ハイカットは左右だけ、低域・中域・高域は上下左右。
 // シェルフの点は増減が半分になる所なので、上下に動かした量の 2 倍が増減になる）。
-// ホイールで、中域は幅、ほかは増減（カットは動かない）。ダブルクリックで、増減を 0 に（カットは周波数を初期値に）。
+// ホイールで、ベルは幅、シェルフは増減（カットは動かない）。ダブルクリックで、増減を 0 に（カットは周波数を初期値に）。
 #pragma once
 
 #include "PluginProcessor.h"
@@ -80,7 +80,10 @@ private:
     static vcab::P freqParam (int i);
     static vcab::P gainParam (int i); // カットは count（増減なし）
     bool pointOn (int i) const;
-    static bool isShelf (int i) { return i == 1 || i == 3; }
+    static vcab::P shapeParam (int i); // カットは count
+    static vcab::P widthParam (int i); // カットは count
+    bool isBell (int i) const;  // 低域・中域・高域の、いまの形
+    bool isShelf (int i) const;
     juce::Point<float> pointPos (int i) const;
     int hitPoint (juce::Point<float> p) const;
     void setParam (vcab::P id, float v);

@@ -1,4 +1,4 @@
-VcabTone 1.2.0
+VcabTone 1.3.0
 ==============
 
 声のための EQ とディエッサーです。遅延は 0 です。
@@ -26,8 +26,9 @@ VcabTone 1.2.0
 
 ■ 画面
   グラフは、入力（青）と出力（橙）のスペクトルと、EQ の特性（黄の線。右の目盛り）です。
-  EQ の点はドラッグで動かせます（ホイールで、中域は幅、低域・高域は増減。
+  EQ の点はドラッグで動かせます（ホイールで、ベルは幅、シェルフは増減。
   ダブルクリックで 0 に戻す）。
+  低域・中域・高域は、形（ベル、ローシェルフ、ハイシェルフ）を選べます。
   緑の帯と紫の帯は、ディエッサーが見ている下の帯域（判定の下端〜境目）と
   上の帯域（境目〜判定の上端）です。境目は実線、両端は点線で引いています。
   赤の塗りはいま削っている量です。
@@ -40,5 +41,5 @@ VcabTone 1.2.0
   AGPLv3（LICENSE.txt）。使っているライブラリのライセンスは
   THIRD_PARTY_LICENSES.md にあります（GPLv3 の本文は GPL-3.0.txt）。
   この版のソースコード:
-    https://github.com/xelloss120/VcabTone/releases/tag/v1.2.0
+    https://github.com/xelloss120/VcabTone/releases/tag/v1.3.0
   VST is a trademark of Steinberg Media Technologies GmbH.

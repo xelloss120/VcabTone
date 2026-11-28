@@ -17,9 +17,9 @@ enum class P : int
 
     // EQ（3 章）
     lowCutOn, lowCutFreq, lowCutSlope,
-    lowGain, lowFreq, lowSlope,
-    midGain, midFreq, midWidth,
-    highGain, highFreq, highSlope,
+    lowShape, lowGain, lowFreq, lowSlope, lowWidth,
+    midShape, midGain, midFreq, midSlope, midWidth,
+    highShape, highGain, highFreq, highSlope, highWidth,
     highCutOn, highCutFreq, highCutSlope,
 
     // ディエッサー（4 章）
@@ -56,6 +56,8 @@ struct ParamInfo
 
 // 傾き（6 / 12 / 24dB/oct）
 enum class Slope : int { db6, db12, db24 };
+// 低域・中域・高域の形（3 章。2026-11-28）
+enum class Shape : int { bell, lowShelf, highShelf };
 // 入力チャンネル
 enum class InputChannel : int { automatic, ch1, ch2, average };
 
@@ -73,11 +75,19 @@ struct EqSettings
     bool lowCutOn = true;
     float lowCutFreq = 80.0f;
     Slope lowCutSlope = Slope::db24;
+    // 低域・中域・高域。傾きはシェルフのとき、幅（オクターブ）はベルのときだけ使う
+    Shape lowShape = Shape::lowShelf;
     float lowGain = 0.0f, lowFreq = 300.0f;
     Slope lowSlope = Slope::db24;
-    float midGain = 0.0f, midFreq = 3000.0f, midWidth = 1.0f; // 幅はオクターブ
+    float lowWidth = 1.0f;
+    Shape midShape = Shape::bell;
+    float midGain = 0.0f, midFreq = 3000.0f;
+    Slope midSlope = Slope::db24;
+    float midWidth = 1.0f;
+    Shape highShape = Shape::highShelf;
     float highGain = 0.0f, highFreq = 8000.0f;
     Slope highSlope = Slope::db24;
+    float highWidth = 1.0f;
     bool highCutOn = true;
     float highCutFreq = 16000.0f;
     Slope highCutSlope = Slope::db24;

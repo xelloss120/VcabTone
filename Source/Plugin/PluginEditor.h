@@ -65,7 +65,7 @@ private:
     CutMeter meter { graph };
     juce::TextButton resetButton, audioSettingsButton;
     juce::ToggleButton listenButton;
-    juce::Label eqRowLabels[3];
+    juce::Label eqRowLabels[4]; // 形、増減、周波数、傾き・幅
     juce::Label eqTitles[3]; // 低域・中域・高域の見出し（カットはオン/オフのチェックボックスが見出し）
     juce::Rectangle<int> eqArea, deessArea; // 操作の帯（paint で下地を描く）
 

@@ -13,12 +13,24 @@ namespace
 // 周波数のつまみは、範囲の両端の相乗平均を真ん中に置く（対数の目盛りに近い動き）
 float geoCentre (float lo, float hi) { return std::sqrt (lo * hi); }
 
+// 低域・中域・高域で共通の説明（形で中身が変わるもの）
+const char* const kShapeNames[3] = { "ベル", "ローシェルフ", "ハイシェルフ" };
+const char* const kShapeHelp =
+    "ベル: 周波数のまわりだけを上げ下げします（幅で効く範囲を決めます）。\n"
+    "ローシェルフ: 周波数より下を、まとめて上げ下げします。ハイシェルフ: 周波数より上を、まとめて上げ下げします（傾きで変わり目の急さを決めます）。";
+const char* const kFreqHelp = "ベルなら真ん中、シェルフなら増減が半分になる所。";
+const char* const kSlopeHelp = "シェルフの、変わり目の急さ。大きいほど、周波数の近くだけで切り替わります（ベルのときは使いません）。";
+const char* const kWidthHelp =
+    "ベルが効く幅（オクターブ。増減が半分になる所が両端。シェルフのときは使いません）。\n"
+    "例えば 3kHz・1 オクターブなら、約 2.1〜4.2kHz に効きます。";
+
 // 範囲に収めた後の値から作る（表を作る途中の確かめでも使うので、表を見ない）
 Settings settingsFromValuesInRange (const std::array<float, kNumParams>& v)
 {
     auto get = [&v] (P id) { return v[static_cast<size_t> (id)]; };
     auto on = [&] (P id) { return get (id) >= 0.5f; };
     auto slope = [&] (P id) { return static_cast<Slope> (std::clamp (static_cast<int> (std::lround (get (id))), 0, 2)); };
+    auto shape = [&] (P id) { return static_cast<Shape> (std::clamp (static_cast<int> (std::lround (get (id))), 0, 2)); };
 
     Settings s;
     s.bypass = on (P::bypass);
@@ -26,15 +38,21 @@ Settings settingsFromValuesInRange (const std::array<float, kNumParams>& v)
     e.lowCutOn = on (P::lowCutOn);
     e.lowCutFreq = get (P::lowCutFreq);
     e.lowCutSlope = slope (P::lowCutSlope);
+    e.lowShape = shape (P::lowShape);
     e.lowGain = get (P::lowGain);
     e.lowFreq = get (P::lowFreq);
     e.lowSlope = slope (P::lowSlope);
+    e.lowWidth = get (P::lowWidth);
+    e.midShape = shape (P::midShape);
     e.midGain = get (P::midGain);
     e.midFreq = get (P::midFreq);
+    e.midSlope = slope (P::midSlope);
     e.midWidth = get (P::midWidth);
+    e.highShape = shape (P::highShape);
     e.highGain = get (P::highGain);
     e.highFreq = get (P::highFreq);
     e.highSlope = slope (P::highSlope);
+    e.highWidth = get (P::highWidth);
     e.highCutOn = on (P::highCutOn);
     e.highCutFreq = get (P::highCutFreq);
     e.highCutSlope = slope (P::highCutSlope);
@@ -71,29 +89,38 @@ std::vector<ParamInfo> makeTable()
         { P::lowCutSlope, "low_cut_slope", "ローカットの傾き", T::choice, 0.0f, 2.0f, 2.0f, 1.0f, 0.0f, "",
           { "6dB/oct", "12dB/oct", "24dB/oct" },
           "周波数より下を、どれだけ急に削るか。大きいほど、周波数より上を残したまま、下だけを深く削ります。" },
+        { P::lowShape, "low_shape", "低域の形", T::choice, 0.0f, 2.0f, 1.0f, 1.0f, 0.0f, "", { kShapeNames[0], kShapeNames[1], kShapeNames[2] },
+          kShapeHelp },
         { P::lowGain, "low_gain", "低域", T::real, -6.0f, 6.0f, 0.0f, 0.1f, 0.0f, "dB", {},
-          "周波数より下を、まとめて上げ下げする量（下のシェルフ）。\n"
+          "低い所を上げ下げする量。初期の形はローシェルフ（周波数より下を、まとめて上げ下げ）。\n"
           "声の高さ（基音）を残したいときは、周波数を基音より下に置きます。" },
         { P::lowFreq, "low_freq", "低域の周波数", T::real, 100.0f, 1000.0f, 300.0f, 1.0f, geoCentre (100.0f, 1000.0f), "Hz", {},
-          "低域のシェルフの位置（増減が半分になる所）。" },
+          kFreqHelp },
         { P::lowSlope, "low_slope", "低域の傾き", T::choice, 0.0f, 2.0f, 2.0f, 1.0f, 0.0f, "",
-          { "6dB/oct", "12dB/oct", "24dB/oct" },
-          "低域のシェルフの、変わり目の急さ。大きいほど、周波数の近くだけで切り替わります。" },
+          { "6dB/oct", "12dB/oct", "24dB/oct" }, kSlopeHelp },
+        { P::lowWidth, "low_width", "低域の幅", T::real, 0.3f, 3.0f, 1.0f, 0.05f, geoCentre (0.3f, 3.0f), "oct", {},
+          kWidthHelp },
+        { P::midShape, "mid_shape", "中域の形", T::choice, 0.0f, 2.0f, 0.0f, 1.0f, 0.0f, "", { kShapeNames[0], kShapeNames[1], kShapeNames[2] },
+          kShapeHelp },
         { P::midGain, "mid_gain", "中域", T::real, -6.0f, 6.0f, 0.0f, 0.1f, 0.0f, "dB", {},
-          "周波数のまわりを上げ下げする量（ピーク）。声の明るさや、こもりの調整に使います。\n"
+          "中ほどを上げ下げする量。初期の形はベル（周波数のまわりだけ）。声の明るさや、こもりの調整に使います。\n"
           "4kHz より上を上げると、サ行も強くなります（ディエッサーは EQ の後の音で判定します）。" },
         { P::midFreq, "mid_freq", "中域の周波数", T::real, 1000.0f, 8000.0f, 3000.0f, 1.0f, geoCentre (1000.0f, 8000.0f), "Hz", {},
-          "中域のピークの真ん中。" },
+          kFreqHelp },
+        { P::midSlope, "mid_slope", "中域の傾き", T::choice, 0.0f, 2.0f, 2.0f, 1.0f, 0.0f, "",
+          { "6dB/oct", "12dB/oct", "24dB/oct" }, kSlopeHelp },
         { P::midWidth, "mid_width", "中域の幅", T::real, 0.3f, 3.0f, 1.0f, 0.05f, geoCentre (0.3f, 3.0f), "oct", {},
-          "中域のピークが効く幅（オクターブ。増減が半分になる所が両端）。\n"
-          "例えば 3kHz・1 オクターブなら、約 2.1〜4.2kHz に効きます。" },
+          kWidthHelp },
+        { P::highShape, "high_shape", "高域の形", T::choice, 0.0f, 2.0f, 2.0f, 1.0f, 0.0f, "", { kShapeNames[0], kShapeNames[1], kShapeNames[2] },
+          kShapeHelp },
         { P::highGain, "high_gain", "高域", T::real, -6.0f, 6.0f, 0.0f, 0.1f, 0.0f, "dB", {},
-          "周波数より上を、まとめて上げ下げする量（上のシェルフ）。空気感やシャリシャリの調整に使います。" },
+          "高い所を上げ下げする量。初期の形はハイシェルフ（周波数より上を、まとめて上げ下げ）。空気感やシャリシャリの調整に使います。" },
         { P::highFreq, "high_freq", "高域の周波数", T::real, 6000.0f, 14000.0f, 8000.0f, 1.0f, geoCentre (6000.0f, 14000.0f), "Hz", {},
-          "高域のシェルフの位置（増減が半分になる所）。" },
+          kFreqHelp },
         { P::highSlope, "high_slope", "高域の傾き", T::choice, 0.0f, 2.0f, 2.0f, 1.0f, 0.0f, "",
-          { "6dB/oct", "12dB/oct", "24dB/oct" },
-          "高域のシェルフの、変わり目の急さ。大きいほど、周波数の近くだけで切り替わります。" },
+          { "6dB/oct", "12dB/oct", "24dB/oct" }, kSlopeHelp },
+        { P::highWidth, "high_width", "高域の幅", T::real, 0.3f, 3.0f, 1.0f, 0.05f, geoCentre (0.3f, 3.0f), "oct", {},
+          kWidthHelp },
         { P::highCutOn, "high_cut_on", "ハイカット", T::toggle, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, "", {},
           "耳に痛い、ごく高い音を削ります。" },
         { P::highCutFreq, "high_cut_freq", "ハイカットの周波数", T::real, 10000.0f, 20000.0f, 16000.0f, 1.0f, geoCentre (10000.0f, 20000.0f), "Hz", {},
@@ -140,9 +167,9 @@ std::vector<ParamInfo> makeTable()
     const auto& eb = b.eq;
     assert (a.bypass == b.bypass && a.inputChannel == b.inputChannel
             && ea.lowCutOn == eb.lowCutOn && ea.lowCutFreq == eb.lowCutFreq && ea.lowCutSlope == eb.lowCutSlope
-            && ea.lowGain == eb.lowGain && ea.lowFreq == eb.lowFreq && ea.lowSlope == eb.lowSlope
-            && ea.midGain == eb.midGain && ea.midFreq == eb.midFreq && ea.midWidth == eb.midWidth
-            && ea.highGain == eb.highGain && ea.highFreq == eb.highFreq && ea.highSlope == eb.highSlope
+            && ea.lowShape == eb.lowShape && ea.lowGain == eb.lowGain && ea.lowFreq == eb.lowFreq && ea.lowSlope == eb.lowSlope && ea.lowWidth == eb.lowWidth
+            && ea.midShape == eb.midShape && ea.midGain == eb.midGain && ea.midFreq == eb.midFreq && ea.midSlope == eb.midSlope && ea.midWidth == eb.midWidth
+            && ea.highShape == eb.highShape && ea.highGain == eb.highGain && ea.highFreq == eb.highFreq && ea.highSlope == eb.highSlope && ea.highWidth == eb.highWidth
             && ea.highCutOn == eb.highCutOn && ea.highCutFreq == eb.highCutFreq && ea.highCutSlope == eb.highCutSlope
             && a.deess.on == b.deess.on && a.deess.split == b.deess.split && a.deess.sensitivity == b.deess.sensitivity
             && a.deess.maxCut == b.deess.maxCut && a.deess.low == b.deess.low && a.deess.high == b.deess.high);

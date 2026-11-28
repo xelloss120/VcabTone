@@ -1,5 +1,6 @@
-// EQ（3 章）: ローカット、低域（下のシェルフ）、中域（ピーク）、高域（上のシェルフ）、ハイカット。
-// 双二次 9 段（各帯域 2 段まで。中域は 1 段）。使わない段は素通しの係数にする。
+// EQ（3 章）: ローカット、低域、中域、高域、ハイカット。低域・中域・高域は、ベル・ローシェルフ・ハイシェルフから形を選ぶ
+// （初期値は、低域がローシェルフ、中域がベル、高域がハイシェルフ）。
+// 双二次 10 段（各帯域 2 段まで。ベルは 1 段）。使わない段は素通しの係数にする。
 #pragma once
 
 #include "../Params.h"
@@ -13,11 +14,11 @@ namespace vcab
 class Eq
 {
 public:
-    static constexpr int kSections = 9;
+    static constexpr int kSections = 10;
     using Chain = std::array<BiquadCoeffs, kSections>;
 
     // 帯域（段の組）。Band::all は全部
-    enum Band : unsigned { lowCutBand = 1u, lowShelfBand = 2u, midBand = 4u, highShelfBand = 8u, highCutBand = 16u, allBands = 31u };
+    enum Band : unsigned { lowCutBand = 1u, lowBand = 2u, midBand = 4u, highBand = 8u, highCutBand = 16u, allBands = 31u };
 
     // 設定から全段の係数を作る（音の処理と画面の曲線で同じものを使う）
     static Chain design (const EqSettings& s, double fs);
@@ -28,7 +29,7 @@ public:
 
     void prepare (double fs);
     // ブロックごとに呼ぶ。連続の値（周波数、増減、幅）はなめらかに追い、
-    // 段の数が変わる切り替え（傾き、オン/オフ）は、新旧の係数の出力をクロスフェードする
+    // 段の数が変わる切り替え（形、傾き、オン/オフ）は、新旧の係数の出力をクロスフェードする
     void setTarget (const EqSettings& s);
     void process (float* data, int n);
 
@@ -36,7 +37,7 @@ private:
     // 連続の値（周波数と幅は対数、増減は dB）
     struct Continuous
     {
-        std::array<double, 9> v {};
+        std::array<double, 11> v {};
         static Continuous from (const EqSettings& s);
         void applyTo (EqSettings& s) const;
     };
@@ -44,7 +45,8 @@ private:
     struct Discrete
     {
         bool lowCutOn = true, highCutOn = true;
-        Slope lowCutSlope = Slope::db24, lowSlope = Slope::db24, highSlope = Slope::db24, highCutSlope = Slope::db24;
+        Shape lowShape = Shape::lowShelf, midShape = Shape::bell, highShape = Shape::highShelf;
+        Slope lowCutSlope = Slope::db24, lowSlope = Slope::db24, midSlope = Slope::db24, highSlope = Slope::db24, highCutSlope = Slope::db24;
         static Discrete from (const EqSettings& s);
         void applyTo (EqSettings& s) const;
         bool operator== (const Discrete& o) const;
